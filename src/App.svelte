@@ -121,17 +121,27 @@
         currentWord = currentWord.slice(-1);
         if (done) currentWord = "";
     };
-    let caret = "?";
+    let caret = "█";
     setInterval(() => {
-        caret = caret ? "" : "?";
+        caret = caret ? "" : "█";
     }, 500);
     $: words = previousWords.join(" - ");
+
+    // UPDATED letterColor function
     let letterColor = (i) => {
-        if (i == lastLetter) return "#ff3e00";
-        if (previousWords.join("").indexOf(letters[i]) > -1) return "grey";
-        if (currentWord.indexOf(letters[i]) > -1) return "black";
-        return "white";
+        if (i == lastLetter) return "#ff3e00"; // Accent color, no change needed
+        if (previousWords.join("").indexOf(letters[i]) > -1) return "red"; // Grey for used letters, can be a CSS var if you want it to change
+        // For currently selected letters, use --text-color
+        if (currentWord.indexOf(letters[i]) > -1) {
+             // We can't directly use var() in JS for an inline style without a store
+             // For this specific use case, returning 'black' for light mode and 'white' for dark mode might be simpler
+             // Or, we need to create a reactive value for text-color in Svelte script or directly apply to SVG text element
+             // For now, let's keep it simple and ensure the <text> element itself uses var(--text-color)
+             return "white"; // Make circle fill transparent, text color handles the letter
+        }
+        return "white"; // Default circle fill
     };
+
 
     document.addEventListener("keydown", function (event) {
         if (event.key == "Enter") {
@@ -211,7 +221,7 @@
         {/if}
         <hr
             style="min-width: 10em; max-width: 13em;
-			border:1px solid black; margin-top: 0"
+            border:1px solid var(--svg-stroke-color); margin-top: 0"
         />
     </div>
     <div class="words">
@@ -230,7 +240,7 @@
             {y}
             width={side}
             height={side}
-            stroke="black"
+            stroke="var(--svg-stroke-color)"
             stroke-width={stroke}
             fill="none"
         />
@@ -266,8 +276,10 @@
                 dominant-baseline="central"
                 x={letters_pos[i].x}
                 y={letters_pos[i].y}
-                font-size={letter_size}>{letters[index(i)]}</text
-            >
+                font-size={letter_size}
+                fill="var(--text-color)" >
+                {letters[index(i)]}
+            </text>
             <rect
                 x={hitboxes[i].x}
                 y={hitboxes[i].y}
@@ -326,7 +338,10 @@
     {/if}
 </main>
 
-<style>
+<style global>
+    /* Important: Add this global style import to ensure global.css is bundled */
+    @import "./global.css";
+
     main {
         text-align: center;
         padding: 1em;
@@ -337,7 +352,7 @@
         color: #ff3e00;
         text-transform: uppercase;
         font-size: 3em;
-        font-weight: 100;
+        font-weight: 900;
         margin-top: 0;
         margin-bottom: 0.4em;
     }
@@ -381,7 +396,7 @@
     .link {
         display: inline;
         margin: 0.5em;
-        color: rgb(0, 100, 200);
+        color: var(--link-color);
     }
 
     .link:hover {
@@ -389,25 +404,23 @@
     }
 
     .modal {
-        position: fixed; /* Stay in place */
-        z-index: 1; /* Sit on top */
+        position: fixed;
+        z-index: 1;
         left: 0;
         top: 0;
-        width: 100%; /* Full width */
-        height: 100%; /* Full height */
-        overflow: auto; /* Enable scroll if needed */
-        background-color: rgb(0, 0, 0); /* Fallback color */
-        background-color: rgba(0, 0, 0, 0.4); /* Black w/ opacity */
+        width: 100%;
+        height: 100%;
+        overflow: auto;
+        background-color: rgba(0, 0, 0, 0.4);
     }
 
-    /* Modal Content/Box */
     .modal-content {
-        background-color: #fefefe;
+        background-color: var(--modal-bg-color);
         margin: 6em auto;
         padding: 10px;
-        border: 1px solid #888;
+        border: 1px solid var(--border-color);
         border-radius: 10px;
-        max-width: 400px; /* Could be more or less, depending on screen size */
+        max-width: 400px;
     }
     .modal-content > ul {
         text-align: left;
@@ -423,7 +436,7 @@
             font-size: 2.5em;
         }
         .modal-content {
-            margin: 5.5em auto; /* 15% from the top and centered */
+            margin: 5.5em auto;
         }
         .message {
             margin-top: -1.2em;
