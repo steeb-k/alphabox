@@ -3,6 +3,7 @@
         seed,
         getDate,
         yesterday,
+        randomPastDate,
         loadWords,
         makeGenerate,
         makeCheck,
@@ -11,6 +12,12 @@
 
     import { fade } from "svelte/transition";
     import { onDestroy } from "svelte";
+    import { onMount } from "svelte";
+
+    onMount(async () => {
+        let savedDate = localStorage.getItem("date") ?? getDate();
+        await loadPuzzle(savedDate);
+    });
 
     onDestroy(() => {
         if (animationInterval) cancelAnimationFrame(animationInterval);
@@ -40,8 +47,72 @@
     let generate, check, solve, solveAll;
     let displaySols = false;
     let solutions, allSolutions;
+    let easySolutionCount = 0;
+    let totalSolutionCount = 0;
+    let par = 0;
+
     let yesterdayLoaded = false; // New variable
     let showTodaySolutions = false;
+
+    function calculatePar(easyCount, totalCount) {
+        if (easyCount === 0 || (easyCount === 1 && totalCount === 1)) {
+            return 6;
+        } else if (easyCount === 1 && totalCount < 4) {
+            return 5;
+        } else if ((easyCount === 1 && totalCount >= 4) || easyCount === 2) {
+            return 4;
+        } else if (easyCount >= 3) {
+            return 3;
+        }
+        return 6; // fallback safety
+    }
+
+    let loadPuzzle = async (dateStr) => {
+        localStorage.setItem("date", dateStr);
+
+        // load wordlists
+        let easy = await loadWords("./easy.txt");
+        let scrabble = await loadWords("./scrabble.txt");
+
+        // generate puzzle letters
+        generate = makeGenerate(easy);
+        letters = generate(dateStr).join("").toUpperCase();
+        localStorage.setItem("puzzle", letters);
+
+        // set up solvers
+        check = makeCheck(scrabble);
+        solve = makeSolve(easy);
+        solveAll = makeSolve(scrabble);
+
+        // ✅ recalc counts
+        easySolutionCount = solve(letters).length;
+        totalSolutionCount = solveAll(letters).length;
+        par = calculatePar(easySolutionCount, totalSolutionCount);
+
+        // reset game state
+        message = " ";
+        previousWords = [];
+        currentWord = "";
+        displaySols = false;
+        showTodaySolutions = false;
+        yesterdayLoaded = dateStr === yesterday();
+    };
+
+    let loadTodayPuzzle = async () => {
+        await loadPuzzle(getDate());
+        yesterdayLoaded = false;
+    };
+
+    let loadYesterdayPuzzle = async () => {
+        await loadPuzzle(yesterday());
+        yesterdayLoaded = true;
+    };
+
+    let loadRandomPuzzle = async () => {
+        await loadPuzzle(randomPastDate());
+        yesterdayLoaded = false;
+    };
+
     let loadTodaySolutions = () => {
         if (!showTodaySolutions) {
             let format = (s) => `${s[0]} - ${s[1]}`;
@@ -50,31 +121,19 @@
         }
         showTodaySolutions = !showTodaySolutions;
     };
-    // New function to load yesterday's solutionslet showTodaySolutions = false;
-    let loadYesterdaySolutions = () => {
-        let yesterdayPuzzle = generate(yesterday()).join("").toUpperCase();
-        letters = yesterdayPuzzle;
-        previousWords = [];
-        currentWord = "";
-        let format = (s) => `${s[0]} - ${s[1]}`;
-        solutions = solve(yesterdayPuzzle).map(format);
-        allSolutions = solveAll(yesterdayPuzzle).map(format);
-        displaySols = true; // This will now be triggered by the new button
-    };
+
     (async () => {
-        let y = window.location.hash == "#y";
-        seed(getDate());
-        let easy = await loadWords("./easy.txt");
-        generate = makeGenerate(easy);
-        letters = generate(getDate()).join("").toUpperCase();
-        localStorage.setItem("puzzle", letters);
-        localStorage.setItem("date", getDate());
-        message = "loading dict";
-        let scrabble = await loadWords("./scrabble.txt");
-        check = makeCheck(scrabble);
-        message = " ";
-        solve = makeSolve(easy);
-        solveAll = makeSolve(scrabble);
+        if (localStorage.getItem("date") == getDate()) {
+            let easy = await loadWords("./easy.txt");
+            let scrabble = await loadWords("./scrabble.txt");
+            generate = makeGenerate(easy);
+            check = makeCheck(scrabble);
+            solve = makeSolve(easy);
+            solveAll = makeSolve(scrabble);
+            message = " ";
+        } else {
+            loadTodayPuzzle();
+        }
     })();
 
     let hitboxes = [];
@@ -139,10 +198,18 @@
     $: done = [...Array(12).keys()].every(
         (i) => previousWords.join("").indexOf(letters[i]) > -1,
     );
+    let shakeAnimation = false;
+
     let enterWord = () => {
         if (done) return;
-        if (currentWord.length < minlength) return alert("Too short");
-        if (!check(currentWord)) return alert("Not a word");
+        if (currentWord.length < minlength) {
+            triggerShake();
+            return;
+        }
+        if (!check(currentWord)) {
+            triggerShake();
+            return;
+        }
 
         // Start animation
         if (currentWord.length > 1) {
@@ -180,6 +247,16 @@
             if (done) currentWord = "";
         }
     };
+
+    function triggerShake() {
+        shakeAnimation = false;
+
+        // Use next tick / small timeout to re-add class
+        setTimeout(() => {
+            shakeAnimation = true;
+        }, 10);
+    }
+
     let caret = "|";
     setInterval(() => {
         caret = caret ? "" : "|";
@@ -255,7 +332,8 @@
 </script>
 
 <main>
-    <h1>litter boxed</h1>
+    <h1>alphabox</h1>
+    <p class="par">Try to get it in <strong>{par}</strong> or fewer words!</p>
 
     {#if help}
         <div
@@ -308,14 +386,22 @@
             >
         {/if}
         {#if !done}
-            <span style="display: inline">{currentWord}</span><span
-                class="unselectable"
-                style={(currentWord ? "width: 0em;" : "") +
-                    "display: inline-block;"}>{caret}</span
-            >
+            <span class="current-container">
+                <span class:shake={shakeAnimation}>{currentWord}</span>
+                <span class="caret">{caret}</span>
+            </span>
         {:else}
-            <span class="blink" style="display: inline">YOU WIN!</span>
+            <!-- keeps layout reserved -->
+            <span class="win-placeholder">YOU WIN!</span>
+
+            <!-- animated overlay -->
+            <span class="win-overlay" aria-hidden="true">
+                {#each "YOU WIN!".split("") as char, i}
+                    <span class="win-letter" style="--i:{i}">{char}</span>
+                {/each}
+            </span>
         {/if}
+
         <hr
             style="min-width: 10em; max-width: 13em;
             border:1px solid var(--svg-stroke-color); margin-top: 0"
@@ -423,22 +509,14 @@
 
     <div class="buttons">
         <button on:click={deleteLetter}>Delete</button>
-        <button on:click={enterWord}>Enter</button>
+        <button on:click={enterWord}>Submit</button>
     </div>
 
     {#if !yesterdayLoaded}
         <p
             class="link"
             on:click={() => {
-                let yesterdayPuzzle = generate(yesterday())
-                    .join("")
-                    .toUpperCase();
-                letters = yesterdayPuzzle;
-                previousWords = [];
-                currentWord = "";
-                yesterdayLoaded = true;
-                showTodaySolutions = false;
-                displaySols = false; // Reset solutions display when switching to yesterday
+                loadYesterdayPuzzle();
             }}
         >
             Yesterday's Game
@@ -447,18 +525,7 @@
         <p
             class="link"
             on:click={() => {
-                if (localStorage.getItem("date") != getDate()) {
-                    localStorage.removeItem("puzzle");
-                }
-                letters = localStorage.getItem("puzzle") || "            ";
-                generate(getDate());
-                letters = generate(getDate()).join("").toUpperCase();
-                localStorage.setItem("puzzle", letters);
-                localStorage.setItem("date", getDate());
-                previousWords = [];
-                currentWord = "";
-                yesterdayLoaded = false;
-                showTodaySolutions = false; // Reset today's solutions when switching back
+                loadTodayPuzzle();
             }}
         >
             Today's Game
@@ -525,7 +592,7 @@
             {/each}
         </div>
     {/if}
-    <br>
+    <br />
     <p
         class="link"
         on:click={() => {
@@ -534,6 +601,7 @@
     >
         Help
     </p>
+    <div class="link" on:click={loadRandomPuzzle}>Random Game</div>
 </main>
 
 <style global>
@@ -547,12 +615,22 @@
     }
 
     h1 {
-        color: #d10000;
+        color: #ff3c3c;
         text-transform: uppercase;
         font-size: 3em;
         font-weight: 900;
         margin-top: 0;
-        margin-bottom: 0.4em;
+        margin-bottom: -0.2em;
+
+        /* Gradient from current color to transparent */
+        background: linear-gradient(to bottom, currentColor, transparent);
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+
+    .par {
+        margin-bottom: 2em;
     }
 
     .unselectable {
@@ -645,5 +723,129 @@
         .message {
             margin-top: -1.2em;
         }
+    }
+
+    .current {
+        position: relative;
+        font-size: x-large;
+        line-height: 1; /* baseline alignment */
+        height: auto; /* let the line height handle spacing */
+    }
+
+    /* Placeholder occupies horizontal space only, zero height effect */
+    .win-placeholder {
+        visibility: hidden;
+        display: inline-block;
+        width: 100%; /* optional, match word width */
+        height: 0; /* no extra vertical space */
+    }
+
+    /* Overlay: absolutely positioned horizontally, baseline-aligned vertically */
+    .win-overlay {
+        position: absolute;
+        left: 50%; /* center horizontally */
+        bottom: 0; /* align baseline with parent's text line */
+        transform: translateX(-50%); /* horizontal centering */
+        display: flex;
+        align-items: baseline; /* keep letters on same line */
+        gap: 0.05em; /* small space between letters */
+        pointer-events: none;
+        font-size: 2em;
+        z-index: 10;
+    }
+
+    /* Letters bounce vertically only */
+    .win-letter {
+        display: inline-block;
+        font-weight: 900;
+        background: linear-gradient(
+            90deg,
+            #ff3e00,
+            #ff0080,
+            #ffeb00,
+            #00ff99,
+            #00c3ff,
+            #7d00ff
+        );
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+
+        /* Restore outline */
+        -webkit-text-stroke: 2px var(--text-color);
+        text-stroke: 2px var(--text-color); /* fallback for future */
+
+        animation: win-bounce 0.7s ease infinite;
+        animation-delay: calc(var(--i) * 0.07s);
+        will-change: transform;
+    }
+
+    /* Bounce: vertical movement only */
+    @keyframes win-bounce {
+        0% {
+            transform: translateY(0);
+        }
+        40% {
+            transform: translateY(-8px);
+        }
+        70% {
+            transform: translateY(2px);
+        }
+        100% {
+            transform: translateY(0);
+        }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .win-letter {
+            animation: none;
+        }
+    }
+
+    @keyframes shake-red {
+        0% {
+            transform: translateX(0);
+            color: var(--text-color);
+        }
+        25% {
+            transform: translateX(-4px);
+            color: red;
+        }
+        50% {
+            transform: translateX(4px);
+            color: red;
+        }
+        75% {
+            transform: translateX(-4px);
+            color: red;
+        }
+        100% {
+            transform: translateX(0);
+            color: var(--text-color);
+        }
+    }
+
+    .shake {
+        display: inline; /* ensure no extra box */
+        animation: shake-red 0.2s ease;
+    }
+    .current-container {
+        position: relative;
+        display: inline-block; /* keeps width to the word */
+    }
+
+    .current-container > .caret {
+        position: absolute;
+        left: 100%; /* start right after the word span */
+        margin-left: 0.1em; /* small gap between last letter and caret */
+        top: 50%;
+        transform: translateY(-50%);
+        font-size: inherit;
+        line-height: 1;
+    }
+
+    .current-container > span {
+        display: inline-block;
+        line-height: 1; /* matches caret positioning */
     }
 </style>
