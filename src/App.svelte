@@ -968,7 +968,7 @@
 
     @font-face {
     font-family: 'Squaresville';
-    src: url('/SQUARESV.TTF') format('truetype');
+    src: url('./SQUARESV.TTF') format('truetype');
     font-weight: normal;
     font-style: normal;
     font-display: swap; /* Optional: improves performance */
