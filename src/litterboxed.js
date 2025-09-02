@@ -162,6 +162,21 @@ export let yesterday = () => {
     return getDate(date);
 }
 
+export let randomPastDate = () => {
+    const today = new Date();
+    // Start date for puzzles can be set here.
+    const startDate = new Date('2023-01-01');
+    const diffTime = today.getTime() - startDate.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    // Pick a random number of days in the past.
+    const randomDays = Math.floor(Math.random() * diffDays);
+    const randomDate = new Date();
+    randomDate.setDate(today.getDate() - randomDays);
+
+    return randomDate.toISOString().slice(0, 10);
+};
+
 export let makeGenerate = (words) => {
     let wbfl = new Map();
     for (let w of words) {
@@ -200,12 +215,16 @@ export let makeCheck = (words) => (w) => {
 export let makeSolve = (words) => (puzzle) => {
     puzzle = puzzle.toLowerCase();
     let valid = (w) => {
-        let last = null;
+        let lastSide = null;
         for (let c of w) {
             let i = puzzle.indexOf(c);
-            if (i == -1 || i == last)
-                return false;
-            last = i;
+            if (i == -1) return false;
+
+            // Determine which side this letter is on (0-3)
+            let currentSide = Math.floor(i / 3);
+
+            if (currentSide === lastSide) return false;
+            lastSide = currentSide;
         }
         return true;
     }

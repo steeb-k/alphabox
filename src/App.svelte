@@ -50,8 +50,7 @@
     let easySolutionCount = 0;
     let totalSolutionCount = 0;
     let par = 0;
-
-    let yesterdayLoaded = false; // New variable
+    let yesterdayLoaded = false;
     let showTodaySolutions = false;
 
     function calculatePar(easyCount, totalCount) {

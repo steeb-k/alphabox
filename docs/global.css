@@ -1,5 +1,5 @@
 :root {
-    --bg-color: #fefefe;
+    --bg-color: #5e5e5e;
     --text-color: #333;
     --border-color: #888;
     --link-color: rgb(0, 100, 200);
@@ -40,7 +40,8 @@ body {
     padding: 8px;
     box-sizing: border-box;
     font-family: Inter, sans-serif;
-    font-feature-settings: 'liga' 1, 'calt' 1; /* fix for Chrome */
+    font-feature-settings: 'liga' 1, 'calt' 1;
+    /* fix for Chrome */
     transition: background-color 0.3s ease, color 0.3s ease;
 }
 
