@@ -876,7 +876,6 @@
     class="sidebar-link"
     on:click={() => {
         toggleTheme();
-        showMenu = false;
     }}
 >
     {#if userThemePreference === 'dark'}
