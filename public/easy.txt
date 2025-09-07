@@ -966,6 +966,7 @@ clean
 cleaner
 cleaners
 cleaning
+cleanings
 cleanup
 clear
 clearance
