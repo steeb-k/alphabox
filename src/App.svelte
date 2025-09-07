@@ -11,6 +11,9 @@
         makeGenerate,
         makeCheck,
         makeSolve,
+        getStreakData,
+        updateStreak,
+        shouldShowHelp,
     } from "./litterboxed.js";
     import "./global.css";
 
@@ -50,6 +53,11 @@
     let letters = localStorage.getItem("puzzle") || "            ";
     let url = "steeb-k.github.io/alphabox";
 
+    // Streak tracking
+    let streakData = null;
+    let showStreakModal = false;
+    let showHelpOnLoad = false;
+
     // Animation variables
     let animatingWord = null;
     let animationDuration = 800;
@@ -66,7 +74,7 @@
     let generate, check, solve, solveAll;
 
     // Constants and derived data
-    const githubUrl = "https://github.com/steeb-k/alphabox";
+    let githubUrl = "https://github.com/steeb-k/alphabox";
     let caret = "|";
     let circles = [];
     let letters_pos = [];
@@ -105,6 +113,18 @@
     onMount(async () => {
         let savedDate = localStorage.getItem("date") ?? getDate();
         await loadPuzzle(savedDate);
+
+        // Check streak data after loading puzzle
+        streakData = getStreakData();
+        showHelpOnLoad = shouldShowHelp();
+
+        // Show appropriate modal
+        if (showHelpOnLoad) {
+            help = true;
+        } else {
+            // Always show streak modal for returning users
+            showStreakModal = true;
+        }
 
         // Close banner after delay
         const timer = setTimeout(() => {
@@ -226,6 +246,8 @@
             currentPathLength = totalPathLength;
             if (animationInterval) cancelAnimationFrame(animationInterval);
             const startTime = Date.now();
+
+            // Animation function
             const animate = () => {
                 const elapsed = Date.now() - startTime;
                 const progress = Math.min(elapsed / animationDuration, 1);
@@ -236,12 +258,22 @@
                     previousWords = [...previousWords, animatingWord];
                     currentWord = animatingWord.slice(-1);
                     animatingWord = null;
+
+                    // Check if game is won and update streak
+                    if (done) {
+                        handleGameCompletion();
+                    }
                 }
             };
             animationInterval = requestAnimationFrame(animate);
         } else {
             previousWords = [...previousWords, currentWord];
             currentWord = currentWord.slice(-1);
+
+            // Check if game is won and update streak
+            if (done) {
+                handleGameCompletion();
+            }
         }
     };
 
@@ -267,6 +299,32 @@
         }
         return pathData;
     };
+
+    function handleGameCompletion() {
+        if (!done) return;
+
+        // Only update streak and show modal for today's game
+        const isTodaysGame = localStorage.getItem("date") === getDate();
+
+        if (isTodaysGame) {
+            // Update streak only for today's game
+            const updatedStreak = updateStreak(true);
+            console.log("Today's game won! Streak updated:", updatedStreak);
+
+            // Update the UI
+            streakData = updatedStreak;
+
+            // Show streak modal AFTER the UI has updated
+            setTimeout(() => {
+                showStreakModal = true;
+            }, 100); // Short delay to ensure UI updates first
+        }
+    }
+
+    // Add this reactive statement to watch for game completion
+    $: if (done) {
+        handleGameCompletion();
+    }
 
     const calculatePathLength = (word) => {
         let length = 0;
@@ -307,6 +365,9 @@
                 event.preventDefault();
             } else if (showMenu) {
                 showMenu = false;
+                event.preventDefault();
+            } else if (showStreakModal) {
+                showStreakModal = false;
                 event.preventDefault();
             }
         }
@@ -605,14 +666,140 @@
             enterWord();
         } else if (event.key == "Backspace") {
             deleteLetter();
+        } else if (event.altKey && event.shiftKey && event.key === "W") {
+            // Alt+Shift+W to manually force a win
+            manuallyForceWin();
+            event.preventDefault();
+        } else if (event.altKey && event.shiftKey && event.key === "I") {
+            // Alt+Shift+I to manually increment streak
+            manuallyIncrementStreak();
+            event.preventDefault();
+        } else if (event.altKey && event.shiftKey && event.key === "V") {
+            // Alt+Shift+V to verify streak storage
+            verifyStreakStorage();
+            event.preventDefault();
+        } else if (event.altKey && event.shiftKey && event.key === "R") {
+            // Alt+Shift+R to reset streak
+            resetStreak();
+            event.preventDefault();
         } else {
             let i = letters.indexOf(event.key.toUpperCase());
             if (i != -1) selectLetter(i);
         }
     });
+
+    function manuallyIncrementStreak() {
+        // Get current streak data
+        const currentStreak = getStreakData() || {
+            current: 0,
+            lastPlayed: null,
+            longest: 0,
+        };
+        const today = getDate();
+
+        console.log("Current streak before:", currentStreak);
+
+        // Create updated streak data
+        const updatedStreak = {
+            current: currentStreak.current + 1,
+            lastPlayed: today,
+            longest: Math.max(currentStreak.current + 1, currentStreak.longest),
+        };
+
+        // Save to localStorage
+        localStorage.setItem("alphabox-streak", JSON.stringify(updatedStreak));
+
+        // Update the streakData variable to trigger UI refresh
+        streakData = updatedStreak;
+
+        console.log("Streak after increment:", updatedStreak);
+
+        // Show the streak modal AFTER the UI has updated
+        setTimeout(() => {
+            showCustomAlert(
+                `Streak manually incremented to ${updatedStreak.current} days!`,
+            );
+            showStreakModal = true;
+        }, 50); // Short delay to ensure UI updates first
+
+        return updatedStreak;
+    }
 </script>
 
 <main>
+    <!-- This is for testing streak saving. It can be removed once we are 100% certain localStorage works well.
+    <button
+        on:click={manuallyIncrementStreak}
+        style="position: fixed; bottom: 10px; left: 10px; z-index: 9999; opacity: 0.5; font-size: 10px; padding: 2px 5px;"
+        title="Debug: Increment Streak"
+    >
+        🎯 +1
+    </button> -->
+    {#if showStreakModal}
+        <!-- svelte-ignore a11y-click-events-have-key-events -->
+        <div
+            class="modal"
+            on:click={() => (showStreakModal = false)}
+            transition:fade={{ duration: 250 }}
+        >
+            <div
+                class="modal-content"
+                on:click|stopPropagation
+                transition:fly={{ y: -20, duration: 300 }}
+            >
+                <button
+                    class="close-button"
+                    on:click={() => (showStreakModal = false)}>&times;</button
+                >
+                <h3>Daily AlphaBox</h3>
+                <div class="streak-container">
+                    {#if streakData && streakData.current > 0}
+                        <div class="streak-badge">
+                            <span class="streak-count"
+                                >{streakData.current}</span
+                            >
+                            <span class="streak-label">day streak! 🔥</span>
+                        </div>
+                        <p>
+                            Your longest streak: <strong
+                                >{streakData.longest} days</strong
+                            >
+                        </p>
+                    {:else}
+                        <div class="streak-badge">
+                            <span class="streak-label"
+                                >Time to start a streak!</span
+                            >
+                        </div>
+                        <p>
+                            Your longest streak: <strong
+                                >{streakData ? streakData.longest : 0} days</strong
+                            >
+                        </p>
+                    {/if}
+
+                    <!-- Add today's puzzle info -->
+                    <div class="puzzle-info">
+                        <p>
+                            Today's puzzle has {easySolutionCount} optimal solution{easySolutionCount !==
+                            1
+                                ? "s"
+                                : ""}
+                        </p>
+                        <p>Try to solve it in {par} or fewer words!</p>
+                    </div>
+                </div>
+
+                <!-- Simple View Board button that just closes the modal -->
+                <button
+                    class="streak-continue-button"
+                    on:click={() => (showStreakModal = false)}
+                >
+                    View Board
+                </button>
+            </div>
+        </div>
+    {/if}
     {#if !showMenu}
         <button
             class="menu-button {showMenu ? 'sidebar-open' : ''}"
@@ -787,15 +974,19 @@
         <!-- svelte-ignore a11y-click-events-have-key-events -->
         <div
             class="modal"
-            bind:this={modal}
-            on:click={(evt) => {
-                help = evt.target != modal;
+            on:click={() => {
+                // Only allow closing by clicking outside for non-first-time users
+                if (!showHelpOnLoad) {
+                    help = false;
+                }
             }}
         >
-            <div class="modal-content">
-                <button class="close-button" on:click={() => (help = false)}
-                    >&times;</button
-                >
+            <div class="modal-content" on:click|stopPropagation>
+                {#if !showHelpOnLoad}
+                    <button class="close-button" on:click={() => (help = false)}
+                        >&times;</button
+                    >
+                {/if}
                 <h3 style="margin-top: .5em">How to Play</h3>
                 <ul>
                     <li>Connect letters to spell words</li>
@@ -826,7 +1017,21 @@
                         >
                     </p>
                 </ul>
-                <h3>How "Par" is Calculated</h3>
+                {#if showHelpOnLoad}
+                    <button
+                        class="streak-continue-button"
+                        on:click={() => {
+                            help = false;
+                            showHelpOnLoad = false;
+                            // Initialize streak data for first-time user
+                            streakData = updateStreak(false);
+                        }}
+                    >
+                        Let's Play!
+                    </button>
+                {/if}
+
+                <h3 style="padding-top: 1em;">How "Par" is Calculated</h3>
                 <p>
                     While there is always a two-word solution to the puzzle,
                     some games may be more difficult to figure out than others.

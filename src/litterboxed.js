@@ -233,9 +233,9 @@ export let makeSolve = (words) => (puzzle) => {
         if (!valid(w))
             continue;
         for (let [i, c] of [
-                [0, w.slice(-1)],
-                [1, w[0]]
-            ]) {
+            [0, w.slice(-1)],
+            [1, w[0]]
+        ]) {
             if (!ltp.has(c))
                 ltp.set(c, [
                     [],
@@ -255,3 +255,68 @@ export let makeSolve = (words) => (puzzle) => {
     }
     return ans;
 }
+
+// Add these functions to your litterboxed.js file
+
+export function getStreakData() {
+    if (typeof localStorage === 'undefined') return null;
+
+    const streakData = localStorage.getItem('alphabox-streak');
+    return streakData ? JSON.parse(streakData) : null;
+}
+
+export function updateStreak(wonToday = false) {
+    if (typeof localStorage === 'undefined') return null;
+
+    const today = getDate();
+    const streakData = getStreakData() || { current: 0, lastPlayed: null, longest: 0 };
+
+    let needsUpdate = false;
+
+    // If we already played today, don't update unless we're marking a win
+    if (streakData.lastPlayed === today) {
+        if (wonToday && streakData.current === 0) {
+            // Special case: if we lost earlier today but now won, update the streak
+            streakData.current = 1;
+            streakData.longest = Math.max(1, streakData.longest);
+            needsUpdate = true;
+        }
+    } else {
+        // Check if we're continuing a streak (played yesterday)
+        const isConsecutive = streakData.lastPlayed === yesterday();
+
+        if (wonToday) {
+            // If won and consecutive day, increment streak
+            if (isConsecutive) {
+                streakData.current += 1;
+            } else {
+                // Otherwise start a new streak
+                streakData.current = 1;
+            }
+
+            // Update longest streak if needed
+            streakData.longest = Math.max(streakData.current, streakData.longest);
+        } else {
+            // Lost, reset streak
+            streakData.current = 0;
+        }
+
+        // Update last played date
+        streakData.lastPlayed = today;
+        needsUpdate = true;
+    }
+
+    // Save to localStorage only if we made changes
+    if (needsUpdate) {
+        localStorage.setItem('alphabox-streak', JSON.stringify(streakData));
+    }
+
+    // Return a new object to ensure reactivity
+    return { ...streakData };
+}
+
+export function shouldShowHelp() {
+    const streakData = getStreakData();
+    return !streakData || !streakData.lastPlayed;
+}
+

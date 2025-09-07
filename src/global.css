@@ -9,6 +9,7 @@
     --svg-stroke-color: black;
     --svg-fill-color: #fefefe;
     --modal-bg-color: #fefefe;
+    --modal-secondary-bg: #f0f0f0;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -23,6 +24,7 @@
         --svg-stroke-color: #e0e0e0;
         --svg-fill-color: #121212;
         --modal-bg-color: #1a1a1a;
+        --modal-secondary-bg: #2a2a2a;
     }
 }
 
@@ -295,15 +297,20 @@ svg {
     animation: shake-red 0.2s ease;
 }
 
+/* ===== UPDATED MODAL STYLES ===== */
 .modal {
     position: fixed;
-    z-index: 1;
-    left: 0;
     top: 0;
+    left: 0;
     width: 100%;
     height: 100%;
-    overflow: auto;
     background-color: rgba(0, 0, 0, 0.4);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    padding: 1rem;
+    box-sizing: border-box;
 }
 
 .modal.screenshot-modal {
@@ -313,19 +320,34 @@ svg {
 }
 
 .modal-content {
-    text-align: left;
     background-color: var(--modal-bg-color);
-    margin: 6em auto;
-    padding: 10px;
-    border: 1px solid var(--border-color);
-    border-radius: 10px;
-    max-width: 400px;
+    color: var(--text-color);
+    padding: 2rem;
+    border-radius: 12px;
+    max-width: 90%;
+    width: 400px;
     position: relative;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+    max-height: 90vh; /* Maximum height */
+    overflow-y: auto; /* Enable vertical scrolling */
+    display: flex;
+    flex-direction: column;
 }
 
 .modal-content.screenshot-modal-content {
     text-align: center;
     padding: 2em;
+}
+
+.modal-body {
+    flex: 1; /* Takes available space */
+    overflow-y: auto; /* Enable scrolling for content */
+    padding-right: 5px; /* Space for scrollbar */
+}
+
+.modal-footer {
+    margin-top: auto; /* Pushes footer to bottom */
+    padding-top: 1.5rem;
 }
 
 .modal-content > ul {
@@ -334,14 +356,16 @@ svg {
 
 .close-button {
     position: absolute;
-    top: -5px;
-    right: 0px;
-    background: transparent;
+    top: 0.5rem;
+    right: 1rem;
+    background: none;
     border: none;
-    font-size: 2em;
-    font-weight: bold;
-    color: var(--text-color);
+    font-size: 2rem;
     cursor: pointer;
+    color: var(--text-color);
+    padding: 0;
+    line-height: 1;
+    z-index: 10; /* Ensure it stays on top */
 }
 
 .close-button:hover,
@@ -350,6 +374,123 @@ svg {
     outline: none;
 }
 
+/* Modal content styling */
+.modal-content h3 {
+    margin-top: 0;
+    margin-bottom: 1.5rem;
+    text-align: center;
+}
+
+.modal-content ul {
+    padding-left: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.modal-content li {
+    margin-bottom: 0.5rem;
+    line-height: 1.5;
+}
+
+/* Custom scrollbar for modal */
+.modal-content::-webkit-scrollbar {
+    width: 8px;
+}
+
+.modal-content::-webkit-scrollbar-track {
+    background: transparent;
+    border-radius: 4px;
+}
+
+.modal-content::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+}
+
+.modal-content::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.3);
+}
+
+/* For Firefox */
+.modal-content {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
+}
+
+/* ===== STREAK MODAL SPECIFIC STYLES ===== */
+.streak-container {
+    text-align: center;
+    margin: 1em 0;
+}
+
+.streak-container p {
+    margin: 0.5em 0;
+    font-size: 1.2em;
+}
+
+.streak-continue-button {
+    background-color: #ff3e00;
+    color: white;
+    border: none;
+    padding: 0.75em 1.5em;
+    border-radius: 6px;
+    font-size: 1.1em;
+    cursor: pointer;
+    margin-top: 1.5em;
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+    transition: background-color 0.2s;
+    font-weight: bold;
+}
+
+.streak-continue-button:hover {
+    background-color: #e63500;
+}
+
+.streak-badge {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    margin: 1rem 0;
+}
+
+.streak-count {
+    font-size: 3rem;
+    font-weight: bold;
+    color: #ff3e00;
+    margin-right: 0.5rem;
+}
+
+.streak-label {
+    font-size: 1.5rem;
+    font-weight: bold;
+}
+
+.puzzle-info {
+    background-color: var(--modal-secondary-bg);
+    padding: 0.75rem;
+    border-radius: 8px;
+    margin: 1rem 0;
+}
+
+.puzzle-info p {
+    margin: 0.5rem 0;
+    font-size: 1rem;
+}
+
+.new-record {
+  color: #ff3e00;
+  font-weight: bold;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+/* ===== EXISTING STYLES ===== */
 .solutions-container {
     text-align: left;
     max-height: 60vh;
@@ -621,5 +762,4 @@ svg {
         top: 0.5em;
         left: 0.5em;
     }
-
 }
