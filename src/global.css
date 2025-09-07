@@ -12,8 +12,39 @@
     --modal-secondary-bg: #f0f0f0;
 }
 
+/* Force dark theme */
+.force-dark {
+    --bg-color: #121212 !important;
+    --text-color: #e0e0e0 !important;
+    --border-color: #555 !important;
+    --link-color: rgb(77, 166, 255) !important;
+    --link-hover-color: rgb(51, 133, 224) !important;
+    --button-bg-color: #333 !important;
+    --button-text-color: #e0e0e0 !important;
+    --svg-stroke-color: #e0e0e0 !important;
+    --svg-fill-color: #121212 !important;
+    --modal-bg-color: #1a1a1a !important;
+    --modal-secondary-bg: #2a2a2a !important;
+}
+
+/* Force light theme */
+.force-light {
+    --bg-color: #f0f0f0 !important;
+    --text-color: #333 !important;
+    --border-color: #888 !important;
+    --link-color: rgb(0, 100, 200) !important;
+    --link-hover-color: rgb(0, 80, 160) !important;
+    --button-bg-color: #f4f4f4 !important;
+    --button-text-color: #333 !important;
+    --svg-stroke-color: black !important;
+    --svg-fill-color: #fefefe !important;
+    --modal-bg-color: #fefefe !important;
+    --modal-secondary-bg: #f0f0f0 !important;
+}
+
+/* Update the media query to only apply when no forced theme is set */
 @media (prefers-color-scheme: dark) {
-    :root {
+    :root:not(.force-light):not(.force-dark) {
         --bg-color: #121212;
         --text-color: #e0e0e0;
         --border-color: #555;

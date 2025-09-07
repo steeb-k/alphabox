@@ -111,6 +111,7 @@
 
     // ===== LIFECYCLE FUNCTIONS =====
     onMount(async () => {
+        applyThemePreference();
         let savedDate = localStorage.getItem("date") ?? getDate();
         await loadPuzzle(savedDate);
 
@@ -724,6 +725,39 @@
 
         return updatedStreak;
     }
+
+
+    // Add theme preference variable
+    let userThemePreference = localStorage.getItem("theme-preference") || "system";
+    
+    // Function to toggle theme
+    function toggleTheme() {
+        if (userThemePreference === "system") {
+            userThemePreference = "dark";
+        } else if (userThemePreference === "dark") {
+            userThemePreference = "light";
+        } else {
+            userThemePreference = "system";
+        }
+        
+        localStorage.setItem("theme-preference", userThemePreference);
+        applyThemePreference();
+    }
+    
+    // Function to apply theme preference
+    function applyThemePreference() {
+        if (userThemePreference === "dark") {
+            document.documentElement.classList.add("force-dark");
+            document.documentElement.classList.remove("force-light");
+        } else if (userThemePreference === "light") {
+            document.documentElement.classList.add("force-light");
+            document.documentElement.classList.remove("force-dark");
+        } else {
+            document.documentElement.classList.remove("force-dark", "force-light");
+        }
+    }
+
+
 </script>
 
 <main>
@@ -838,6 +872,30 @@
                 on:mouseleave={() => setSidebarHover(false)}
             >
                 <div class="sidebar-content">
+                    <button
+    class="sidebar-link"
+    on:click={() => {
+        toggleTheme();
+        showMenu = false;
+    }}
+>
+    {#if userThemePreference === 'dark'}
+        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M9.37 5.51A7.35 7.35 0 0 0 9.1 7.5c0 4.08 3.32 7.4 7.4 7.4.68 0 1.35-.09 1.99-.27A7.014 7.014 0 0 1 12 19c-3.86 0-7-3.14-7-7 0-2.93 1.81-5.45 4.37-6.49z"/>
+        </svg>
+        <span class="glow-text">Dark Theme</span>
+    {:else if userThemePreference === 'light'}
+        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zM2 13h2c.55 0 1-.45 1-1s-.45-1-1-1H2c-.55 0-1 .45-1 1s.45 1 1 1zm18 0h2c.55 0 1-.45 1-1s-.45-1-1-1h-2c-.55 0-1 .45-1 1s.45 1 1 1zM11 2v2c0 .55.45 1 1 1s1-.45 1-1V2c0-.55-.45-1-1-1s-1 .45-1 1zm0 18v2c0 .55.45 1 1 1s1-.45 1-1v-2c0-.55-.45-1-1-1s-1 .45-1 1zM6.34 5.16l-1.42 1.42c-.39.39-.39 1.02 0 1.41.39.39 1.02.39 1.41 0l1.42-1.42c.39-.39.39-1.02 0-1.41a.9959.9959 0 0 0-1.41 0zm13.08 12.42l1.42 1.42c.39.39 1.02.39 1.41 0 .39-.39.39-1.02 0-1.41l-1.42-1.42c-.39-.39-1.02-.39-1.41 0a.9959.9959 0 0 0 0 1.41zM5.16 17.66l1.42 1.42c.39.39 1.02.39 1.41 0 .39-.39.39-1.02 0-1.41L6.57 16.25c-.39-.39-1.02-.39-1.41 0a.9959.9959 0 0 0 0 1.41zm12.42-13.08l1.42-1.42c.39-.39.39-1.02 0-1.41-.39-.39-1.02-.39-1.41 0l-1.42 1.42c-.39.39-.39 1.02 0 1.41.39.39 1.02.39 1.41 0z"/>
+        </svg>
+        <span class="glow-text">Light Theme</span>
+    {:else}
+        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M20 8.69V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12 20 8.69zM12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6 6 2.69 6 6-2.69 6-6 6zm0-10c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4z"/>
+        </svg>
+        <span class="glow-text">System Theme</span>
+    {/if}
+</button>
                     <button
                         class="sidebar-link"
                         on:click={() => {
