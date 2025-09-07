@@ -1,6 +1,9 @@
 <script>
+    import { onDestroy, onMount } from "svelte";
+    import { fade, fly } from "svelte/transition";
+    import { cubicIn, cubicOut } from "svelte/easing";
+    import html2canvas from "html2canvas";
     import {
-        seed,
         getDate,
         yesterday,
         randomPastDate,
@@ -9,42 +12,15 @@
         makeCheck,
         makeSolve,
     } from "./litterboxed.js";
+    import './global.css';
 
-    import { fade } from "svelte/transition";
-    import { onDestroy } from "svelte";
-    import { onMount } from "svelte";
-
-    onMount(async () => {
-        let savedDate = localStorage.getItem("date") ?? getDate();
-        await loadPuzzle(savedDate);
-    });
-
-    onDestroy(() => {
-        if (animationInterval) cancelAnimationFrame(animationInterval);
-    });
-
+    // ===== VARIABLE DECLARATIONS =====
+    // Game state variables
     let message = "loading";
-    let alert = (msg) => {
-        message = msg;
-        setTimeout(() => {
-            message = "";
-        }, 1000);
-    };
-
-    let minlength = 3;
-    let side = 30;
-    let x = 6;
-    let y = 6;
-    let circles = [];
-    let letters_pos = [];
-    let letter_offset = 3.5;
-    let letter_size = 4;
-    let letters = "";
-    if (localStorage.getItem("date") != getDate()) {
-        localStorage.removeItem("puzzle");
-    }
-    letters = localStorage.getItem("puzzle") || "            ";
-    let generate, check, solve, solveAll;
+    let currentWord = "";
+    let previousWords = [];
+    let done = false;
+    let shakeAnimation = false;
     let displaySols = false;
     let solutions, allSolutions;
     let easySolutionCount = 0;
@@ -52,7 +28,97 @@
     let par = 0;
     let yesterdayLoaded = false;
     let showTodaySolutions = false;
+    
+    // UI state variables
+    let help = false;
+    let solutionsModal = false;
+    let showMenu = false;
+    let modal;
+    let isExpanded = true;
+    let isHovering = false;
+    let isVisible = true;
+    let isSidebarHovered = false;
+    
+    // Puzzle configuration
+    let minlength = 3;
+    let side = 30;
+    let x = 6;
+    let y = 6;
+    let stroke = 0.3;
+    let letter_offset = 3.5;
+    let letter_size = 4;
+    let letters = localStorage.getItem("puzzle") || "            ";
+    let url = "steeb-k.github.io/alphabox";
+    
+    // Animation variables
+    let animatingWord = null;
+    let animationDuration = 800;
+    let animationInterval;
+    let totalPathLength = 0;
+    let currentPathLength = 0;
+    
+    // DOM references
+    let screenshotArea;
+    let currentEl;
+    let scaleFactor = 1;
+    
+    // Game functions (will be assigned)
+    let generate, check, solve, solveAll;
+    
+    // Constants and derived data
+    const githubUrl = "https://github.com/steeb-k/alphabox";
+    let caret = "|";
+    let circles = [];
+    let letters_pos = [];
+    let hitboxes = [];
+    let sidebarTimeout;
+    
+    // ===== COMPUTED PROPERTIES =====
+    $: lastLetter = currentWord ? letters.indexOf(currentWord.slice(-1)) : -1;
+    $: done = [...Array(12).keys()].every(
+        (i) => previousWords.join("").indexOf(letters[i]) > -1,
+    );
+    $: words = previousWords.join(" - ");
+    $: currentText = [...previousWords, currentWord].filter(Boolean).join(" - ");
+    
+    $: if (currentEl && currentText) {
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                const parent = currentEl.parentElement;
+                const parentWidth = parent.offsetWidth;
+                const contentWidth = currentEl.scrollWidth;
+                
+                if (contentWidth > parentWidth) {
+                    scaleFactor = Math.max(0.3, parentWidth / contentWidth);
+                    currentEl.style.transform = `scale(${scaleFactor})`;
+                } else {
+                    scaleFactor = 1;
+                    currentEl.style.transform = 'scale(1)';
+                }
+            });
+        });
+    }
 
+    // ===== LIFECYCLE FUNCTIONS =====
+    onMount(async () => {
+        let savedDate = localStorage.getItem("date") ?? getDate();
+        await loadPuzzle(savedDate);
+        
+        // Close banner after delay
+        const timer = setTimeout(() => {
+            if (!isHovering) {
+                isExpanded = false;
+            }
+        }, 3000);
+        
+        return () => clearTimeout(timer);
+    });
+
+    onDestroy(() => {
+        if (animationInterval) cancelAnimationFrame(animationInterval);
+    });
+
+    // ===== GAME LOGIC FUNCTIONS =====
     function calculatePar(easyCount, totalCount) {
         if (easyCount === 0 || (easyCount === 1 && totalCount === 1)) {
             return 6;
@@ -63,7 +129,7 @@
         } else if (easyCount >= 3) {
             return 3;
         }
-        return 6; // fallback safety
+        return 6;
     }
 
     let loadPuzzle = async (dateStr) => {
@@ -83,7 +149,7 @@
         solve = makeSolve(easy);
         solveAll = makeSolve(scrabble);
 
-        // ✅ recalc counts
+        // recalc counts
         easySolutionCount = solve(letters).length;
         totalSolutionCount = solveAll(letters).length;
         par = calculatePar(easySolutionCount, totalSolutionCount);
@@ -121,21 +187,342 @@
         showTodaySolutions = !showTodaySolutions;
     };
 
-    (async () => {
-        if (localStorage.getItem("date") == getDate()) {
-            let easy = await loadWords("./easy.txt");
-            let scrabble = await loadWords("./scrabble.txt");
-            generate = makeGenerate(easy);
-            check = makeCheck(scrabble);
-            solve = makeSolve(easy);
-            solveAll = makeSolve(scrabble);
-            message = " ";
-        } else {
-            loadTodayPuzzle();
-        }
-    })();
+    // ===== UI INTERACTION FUNCTIONS =====
+    let index = (i) => (i % 4) * 3 + Math.floor(i / 4);
+    let revindex = (i) => (i % 3) * 4 + Math.floor(i / 3);
 
-    let hitboxes = [];
+    let selectLetter = (i) => {
+        if (done) return;
+        if (Math.floor(lastLetter / 3) != Math.floor(i / 3))
+            currentWord = currentWord + letters[i];
+    };
+
+    let deleteLetter = () => {
+        currentWord = currentWord.slice(0, -1);
+        if (currentWord == "")
+            if (previousWords.length) {
+                currentWord = previousWords.pop();
+                previousWords = previousWords;
+            }
+    };
+
+    let enterWord = () => {
+        if (done) return;
+
+        if (currentWord.length < minlength) {
+            triggerShake();
+            return;
+        }
+        if (!check(currentWord)) {
+            triggerShake();
+            return;
+        }
+
+        if (currentWord.length > 1) {
+            animatingWord = currentWord;
+            totalPathLength = calculatePathLength(currentWord);
+            currentPathLength = totalPathLength;
+            if (animationInterval) cancelAnimationFrame(animationInterval);
+            const startTime = Date.now();
+            const animate = () => {
+                const elapsed = Date.now() - startTime;
+                const progress = Math.min(elapsed / animationDuration, 1);
+                currentPathLength = totalPathLength * (1 - progress);
+                if (progress < 1) {
+                    animationInterval = requestAnimationFrame(animate);
+                } else {
+                    previousWords = [...previousWords, animatingWord];
+                    currentWord = animatingWord.slice(-1);
+                    animatingWord = null;
+                }
+            };
+            animationInterval = requestAnimationFrame(animate);
+        } else {
+            previousWords = [...previousWords, currentWord];
+            currentWord = currentWord.slice(-1);
+        }
+    };
+
+    function triggerShake() {
+        shakeAnimation = false;
+        setTimeout(() => {
+            shakeAnimation = true;
+        }, 10);
+    }
+
+    // ===== ANIMATION FUNCTIONS =====
+    const getAnimatedPath = (word) => {
+        if (!word || word.length < 2) return "";
+
+        let pathData = "";
+        for (let i = 0; i < word.length; i++) {
+            const circle = circles[revindex(letters.indexOf(word[i]))];
+            if (i === 0) {
+                pathData = `M ${circle.x} ${circle.y} `;
+            } else {
+                pathData += `L ${circle.x} ${circle.y} `;
+            }
+        }
+        return pathData;
+    };
+
+    const calculatePathLength = (word) => {
+        let length = 0;
+        for (let i = 0; i < word.length - 1; i++) {
+            const start = circles[revindex(letters.indexOf(word[i]))];
+            const end = circles[revindex(letters.indexOf(word[i + 1]))];
+            const dx = end.x - start.x;
+            const dy = end.y - start.y;
+            length += Math.sqrt(dx * dx + dy * dy);
+        }
+        return length;
+    };
+
+    // ===== UI HELPER FUNCTIONS =====
+    let letterColor = (i) => {
+        if (i == lastLetter) return "#ff3e00";
+
+        const usedInPreviousWords = previousWords.join("").indexOf(letters[i]) > -1;
+        const usedInCurrentWord = currentWord.indexOf(letters[i]) > -1;
+
+        if (usedInPreviousWords && !usedInCurrentWord) return "var(--bg-color)";
+
+        if (usedInCurrentWord && i !== lastLetter) {
+            return "var(--text-color)";
+        }
+
+        return "var(--text-color)";
+    };
+
+    function handleEscapeKey(event) {
+        if (event.key === "Escape") {
+            if (help) {
+                help = false;
+                event.preventDefault();
+            } else if (solutionsModal) {
+                solutionsModal = false;
+                event.preventDefault();
+            } else if (showMenu) {
+                showMenu = false;
+                event.preventDefault();
+            }
+        }
+    }
+
+    function handleClick() {
+        window.open(githubUrl, "_blank");
+    }
+
+    function openSidebarOnHover() {
+        if (!showMenu) {
+            clearTimeout(sidebarTimeout);
+            sidebarTimeout = setTimeout(() => {
+                showMenu = true;
+            }, 300);
+        }
+    }
+
+    function closeSidebarOnLeave() {
+        if (showMenu && !isSidebarHovered) {
+            clearTimeout(sidebarTimeout);
+            sidebarTimeout = setTimeout(() => {
+                showMenu = false;
+            }, 500);
+        }
+    }
+
+    function setSidebarHover(state) {
+        isSidebarHovered = state;
+        if (state) {
+            clearTimeout(sidebarTimeout);
+        } else {
+            closeSidebarOnLeave();
+        }
+    }
+
+    function showCustomAlert(message) {
+        const alertBox = document.createElement("div");
+        alertBox.textContent = message;
+
+        alertBox.style.position = "fixed";
+        alertBox.style.top = "50%";
+        alertBox.style.left = "50%";
+        alertBox.style.transform = "translate(-50%, -50%)";
+        alertBox.style.zIndex = "9999";
+        alertBox.style.backgroundColor = "var(--modal-bg-color)";
+        alertBox.style.color = "var(--modal-text-color)";
+        alertBox.style.padding = "1em 2em";
+        alertBox.style.borderRadius = "10px";
+        alertBox.style.fontSize = "1.5em";
+        alertBox.style.fontWeight = "bold";
+        alertBox.style.textAlign = "center";
+        alertBox.style.transition = "opacity 0.5s ease";
+        alertBox.style.opacity = "1";
+
+        document.body.appendChild(alertBox);
+
+        setTimeout(() => {
+            alertBox.style.opacity = "0";
+            setTimeout(() => {
+                alertBox.remove();
+            }, 500);
+        }, 1500);
+    }
+
+    // ===== SCREENSHOT FUNCTION =====
+    async function takeScreenshot() {
+        if (!screenshotArea) {
+            console.error("Screenshot area not found!");
+            return;
+        }
+
+        try {
+            const canvas = await html2canvas(screenshotArea, {
+                scrollY: -window.scrollY,
+                onclone: (clonedDocument) => {
+                    const screenshotContainer = clonedDocument.getElementById("screenshot-area");
+                    if (screenshotContainer) {
+                        screenshotContainer.style.paddingBottom = "2em";
+                        screenshotContainer.style.backgroundColor = "#121212";
+                    }
+
+                    clonedDocument.body.style.backgroundColor = "#121212";
+                    clonedDocument.documentElement.style.backgroundColor = "#121212";
+                    clonedDocument.body.style.color = "white";
+                    clonedDocument.body.style.webkitTextFillColor = "white";
+
+                    const h1Element = clonedDocument.querySelector("h1");
+                    if (h1Element) {
+                        h1Element.style.color = "#ff3c3c";
+                        h1Element.style.webkitTextFillColor = "#ff3c3c";
+                        h1Element.style.backgroundImage = "none";
+                    }
+
+                    const svgElement = clonedDocument.querySelector("svg");
+                    if (svgElement) {
+                        const rect = svgElement.querySelector("rect");
+                        if (rect) {
+                            rect.style.stroke = "white";
+                            rect.style.fill = "none";
+                        }
+
+                        const circles = svgElement.querySelectorAll("circle");
+                        circles.forEach((circle) => {
+                            circle.style.opacity = "1";
+                        });
+
+                        const svgText = svgElement.querySelectorAll("text");
+                        svgText.forEach((text) => {
+                            text.style.fill = "white";
+                        });
+
+                        const svgLines = svgElement.querySelectorAll("line");
+                        svgLines.forEach((line) => {
+                            line.style.stroke = "#ff3c3c";
+                            line.style.strokeWidth = "0.3";
+                        });
+
+                        const svgPaths = svgElement.querySelectorAll("path");
+                        svgPaths.forEach((path) => {
+                            path.style.stroke = "#ff3c3c";
+                            path.style.strokeWidth = "0.3";
+                        });
+                    }
+
+                    const allTextElements = clonedDocument.querySelectorAll(
+                        "p, span, div, button, a, li, ul, strong, .current-container",
+                    );
+                    allTextElements.forEach((el) => {
+                        if (el !== h1Element) {
+                            el.style.color = "var(--text-color";
+                            el.style.webkitTextFillColor = "var(--background-color)";
+                            el.style.backgroundImage = "none";
+                        }
+                    });
+
+                    const lines = clonedDocument.querySelectorAll(".menu-icon .line");
+                    lines.forEach((line) => {
+                        line.style.backgroundColor = "white";
+                    });
+
+                    const hr = clonedDocument.querySelector("hr");
+                    if (hr) {
+                        hr.style.borderColor = "white";
+                    }
+                    
+                    const urlElement = clonedDocument.createElement("div");
+                    urlElement.textContent = url;
+                    urlElement.style.position = "absolute";
+                    urlElement.style.bottom = "5px";
+                    urlElement.style.left = "0";
+                    urlElement.style.right = "0";
+                    urlElement.style.textAlign = "center";
+                    urlElement.style.color = "white";
+                    urlElement.style.fontWeight = "bold";
+                    urlElement.style.fontSize = "18px";
+                    urlElement.style.fontFamily = "Arial, sans-serif";
+                    urlElement.style.zIndex = "9999";
+                    urlElement.style.textShadow = "0 0 3px rgba(0,0,0,0.8)";
+                    urlElement.style.backgroundColor = "rgba(150, 0, 0, 0.8)";
+                    urlElement.style.padding = "8px 16px";
+                    urlElement.style.borderRadius = "12px 12px 0 0";
+                    urlElement.style.backdropFilter = "blur(2px)";
+                    urlElement.style.margin = "-10px auto";
+                    urlElement.style.width = "fit-content";
+                    urlElement.style.maxWidth = "90%";
+                    urlElement.style.border = "1px solid rgba(255, 255, 255, 0.2)";
+
+                    if (screenshotContainer) {
+                        screenshotContainer.style.position = "relative";
+                        screenshotContainer.appendChild(urlElement);
+                    }
+                },
+            });
+
+            const isMobile = /Mobi|Android/i.test(navigator.userAgent);
+
+            if (isMobile) {
+                const blob = await new Promise((resolve) => canvas.toBlob(resolve));
+                const url = URL.createObjectURL(blob);
+                const newTab = window.open(url, "_blank");
+                if (newTab) {
+                    newTab.onload = () => {
+                        showCustomAlert("Long-press the image to save it!");
+                    };
+                } else {
+                    showCustomAlert("Pop-up blocker may have prevented the screenshot from opening.");
+                }
+            } else {
+                const blob = await new Promise((resolve) => canvas.toBlob(resolve));
+                try {
+                    const item = new ClipboardItem({ "image/png": blob });
+                    await navigator.clipboard.write([item]);
+                    showCustomAlert("Screenshot copied to clipboard!");
+                } catch (err) {
+                    console.warn("Clipboard write failed:", err);
+                    showCustomAlert("Failed to copy to clipboard. Downloading instead.");
+                }
+
+                const today = new Date();
+                const formattedDate = today.toISOString().split("T")[0];
+                const filename = `alphabox_${formattedDate}.png`;
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }
+        } catch (err) {
+            console.error("Screenshot process failed:", err);
+            showCustomAlert("Failed to generate screenshot.");
+        }
+    }
+
+    // ===== INITIALIZATION CODE =====
+    // Initialize puzzle geometry
     for (let i = 0; i < 3; i++) {
         let offset = (side / 3) * (i + 0.5);
         circles.push({ x: x, y: y + offset });
@@ -174,148 +561,29 @@
             height: letter_size + letter_offset,
         });
     }
-    let stroke = 0.3;
-    let index = (i) => (i % 4) * 3 + Math.floor(i / 4);
-    let revindex = (i) => (i % 3) * 4 + Math.floor(i / 3);
-    let currentWord = "";
-    $: lastLetter = currentWord ? letters.indexOf(currentWord.slice(-1)) : -1;
-    let selectLetter = (i) => {
-        if (done) return;
-        if (Math.floor(lastLetter / 3) != Math.floor(i / 3))
-            currentWord = currentWord + letters[i];
-    };
-    let deleteLetter = () => {
-        currentWord = currentWord.slice(0, -1);
-        if (currentWord == "")
-            if (previousWords.length) {
-                currentWord = previousWords.pop();
-                previousWords = previousWords;
-            }
-    };
 
-    let previousWords = [];
-    $: done = [...Array(12).keys()].every(
-        (i) => previousWords.join("").indexOf(letters[i]) > -1,
-    );
-    let shakeAnimation = false;
-
-    let enterWord = () => {
-        if (done) return;
-        if (currentWord.length < minlength) {
-            triggerShake();
-            return;
-        }
-        if (!check(currentWord)) {
-            triggerShake();
-            return;
-        }
-
-        // Start animation
-        if (currentWord.length > 1) {
-            animatingWord = currentWord;
-            totalPathLength = calculatePathLength(currentWord);
-            currentPathLength = totalPathLength; // Start with full offset
-
-            // Clear any existing animation
-            if (animationInterval) cancelAnimationFrame(animationInterval);
-
-            const startTime = Date.now();
-
-            const animate = () => {
-                const elapsed = Date.now() - startTime;
-                const progress = Math.min(elapsed / animationDuration, 1);
-
-                currentPathLength = totalPathLength * (1 - progress);
-
-                if (progress < 1) {
-                    animationInterval = requestAnimationFrame(animate);
-                } else {
-                    // After animation completes, add to previous words
-                    previousWords = [...previousWords, animatingWord];
-                    currentWord = animatingWord.slice(-1);
-                    animatingWord = null;
-                    if (done) currentWord = "";
-                }
-            };
-
-            animationInterval = requestAnimationFrame(animate);
+    // Initialize game state
+    (async () => {
+        if (localStorage.getItem("date") == getDate()) {
+            let easy = await loadWords("./easy.txt");
+            let scrabble = await loadWords("./scrabble.txt");
+            generate = makeGenerate(easy);
+            check = makeCheck(scrabble);
+            solve = makeSolve(easy);
+            solveAll = makeSolve(scrabble);
+            message = " ";
         } else {
-            // For single letter words
-            previousWords = [...previousWords, currentWord];
-            currentWord = currentWord.slice(-1);
-            if (done) currentWord = "";
+            loadTodayPuzzle();
         }
-    };
+    })();
 
-    function triggerShake() {
-        shakeAnimation = false;
-
-        // Use next tick / small timeout to re-add class
-        setTimeout(() => {
-            shakeAnimation = true;
-        }, 10);
-    }
-
-    let caret = "|";
+    // Set up caret blinking
     setInterval(() => {
         caret = caret ? "" : "|";
     }, 500);
-    $: words = previousWords.join(" - ");
 
-    // UPDATED letterColor function
-    let letterColor = (i) => {
-        if (i == lastLetter) return "#ff3e00"; // Accent color for last letter
-
-        // Check if this letter is used in previous words (not current word)
-        const usedInPreviousWords =
-            previousWords.join("").indexOf(letters[i]) > -1;
-        const usedInCurrentWord = currentWord.indexOf(letters[i]) > -1;
-
-        if (usedInPreviousWords && !usedInCurrentWord) return "var(--bg-color)"; // Grey for letters used in previous words only
-
-        // For currently selected letters in current word (excluding last letter)
-        if (usedInCurrentWord && i !== lastLetter) {
-            return "var(--text-color)"; // Make circle fill transparent, text color handles the letter
-        }
-
-        return "var(--text-color)"; // Default circle fill
-    };
-
-    // Animation variables
-    let animatingWord = null;
-    let animationProgress = 0;
-    let animationDuration = 800; // milliseconds per word
-    let animationInterval;
-    let totalPathLength = 0;
-    let currentPathLength = 0;
-
-    // Function to create SVG path data for the animated word
-    const getAnimatedPath = (word) => {
-        if (!word || word.length < 2) return "";
-
-        let pathData = "";
-        for (let i = 0; i < word.length; i++) {
-            const circle = circles[revindex(letters.indexOf(word[i]))];
-            if (i === 0) {
-                pathData = `M ${circle.x} ${circle.y} `;
-            } else {
-                pathData += `L ${circle.x} ${circle.y} `;
-            }
-        }
-        return pathData;
-    };
-
-    const calculatePathLength = (word) => {
-        let length = 0;
-        for (let i = 0; i < word.length - 1; i++) {
-            const start = circles[revindex(letters.indexOf(word[i]))];
-            const end = circles[revindex(letters.indexOf(word[i + 1]))];
-            const dx = end.x - start.x;
-            const dy = end.y - start.y;
-            length += Math.sqrt(dx * dx + dy * dy);
-        }
-        return length;
-    };
+    // Set up event listeners
+    document.addEventListener("keydown", handleEscapeKey);
     document.addEventListener("keydown", function (event) {
         if (event.key == "Enter") {
             enterWord();
@@ -326,39 +594,181 @@
             if (i != -1) selectLetter(i);
         }
     });
-    let help = false;
-    let modal;
-
-    // GitHub repo URL
-    const githubUrl = "https://github.com/steeb-k/alphabox";
-
-    // Component state
-    let isExpanded = true;
-    let isHovering = false;
-    let isVisible = true;
-
-    // Close banner after delay
-    onMount(() => {
-        const timer = setTimeout(() => {
-            if (!isHovering) {
-                isExpanded = false;
-            }
-        }, 3000); // 3 seconds delay
-
-        return () => clearTimeout(timer);
-    });
-
-    // Handle click - open GitHub in new tab
-    function handleClick() {
-        window.open(githubUrl, "_blank");
-    }
 </script>
 
 <main>
-    <h1>alphabox</h1>
-    <p class="par">Try to get it in <strong>{par}</strong> or fewer words!</p>
+    {#if !showMenu}
+        <button
+            class="menu-button {showMenu ? 'sidebar-open' : ''}"
+            on:click={() => (showMenu = !showMenu)}
+            on:mouseenter={openSidebarOnHover}
+            on:mouseleave={closeSidebarOnLeave}
+            in:fade={{ duration: 200 }}
+            out:fade={{ duration: 200 }}
+        >
+            <div class="menu-icon">
+                <div class="line"></div>
+                <div class="line"></div>
+                <div class="line"></div>
+            </div>
+        </button>
+    {/if}
+
+    <!-- Sidebar + overlay -->
+    {#if showMenu}
+        <div class="sidebar-overlay">
+            <!-- Background overlay -->
+            <!-- svelte-ignore a11y-click-events-have-key-events -->
+            <div
+                class="overlay-background"
+                on:click={() => (showMenu = false)}
+                in:fade={{ duration: 200 }}
+                out:fade={{ duration: 200 }}
+            ></div>
+
+            <!-- Sliding sidebar -->
+            <aside
+                class="sidebar"
+                in:fly={{ x: -300, duration: 250, easing: cubicOut }}
+                out:fly={{ x: -300, duration: 250, easing: cubicIn }}
+                on:mouseenter={() => setSidebarHover(true)}
+                on:mouseleave={() => setSidebarHover(false)}
+            >
+                <div class="sidebar-content">
+                    <button
+                        class="sidebar-link"
+                        on:click={() => {
+                            help = true;
+                            showMenu = false;
+                        }}
+                    >
+                        <svg
+                            class="sidebar-icon"
+                            viewBox="0 0 24 24"
+                            fill="currentColor"
+                        >
+                            <path
+                                d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z"
+                            />
+                        </svg>
+                        <span class="glow-text">How to Play</span>
+                    </button>
+
+                    {#if !yesterdayLoaded}
+                        <button
+                            class="sidebar-link"
+                            on:click={() => {
+                                loadYesterdayPuzzle();
+                                showMenu = false;
+                            }}
+                        >
+                            <svg
+                                class="sidebar-icon"
+                                viewBox="0 0 24 24"
+                                fill="currentColor"
+                            >
+                                <path
+                                    d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"
+                                />
+                            </svg>
+                            <span class="glow-text">Yesterday's Game</span>
+                        </button>
+                    {:else}
+                        <button
+                            class="sidebar-link"
+                            on:click={() => {
+                                loadTodayPuzzle();
+                                showMenu = false;
+                            }}
+                        >
+                            <svg
+                                class="sidebar-icon"
+                                viewBox="0 0 24 24"
+                                fill="currentColor"
+                            >
+                                <path
+                                    d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM7 10h5v5H7z"
+                                />
+                            </svg>
+                            <span class="glow-text">Today's Game</span>
+                        </button>
+                    {/if}
+
+                    <button
+                        class="sidebar-link"
+                        on:click={() => {
+                            loadRandomPuzzle();
+                            showMenu = false;
+                        }}
+                    >
+                        <svg
+                            class="sidebar-icon"
+                            viewBox="0 0 24 24"
+                            fill="currentColor"
+                        >
+                            <path
+                                d="M20 6h-2.18c.11-.31.18-.65.18-1 0-1.66-1.34-3-3-3-1.05 0-1.96.54-2.5 1.35l-.5.67-.5-.68C10.96 2.54 10.05 2 9 2 7.34 2 6 3.34 6 5c0 .35.07.69.18 1H4c-1.11 0-1.99.89-1.99 2L2 19c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2zm-5-2c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zM9 4c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm11 15H4v-2h16v2zm0-5H4V8h5.08L7 10.83 8.62 12 12 7.4l3.38 4.6L17 10.83 14.92 8H20v6z"
+                            />
+                        </svg>
+                        <span class="glow-text">Random Game</span>
+                    </button>
+
+                    {#if !yesterdayLoaded}
+                        <button
+                            class="sidebar-link"
+                            on:click={() => {
+                                let format = (s) => `${s[0]} - ${s[1]}`;
+                                solutions = solve(letters).map(format);
+                                allSolutions = solveAll(letters).map(format);
+                                solutionsModal = true;
+                                showMenu = false;
+                            }}
+                        >
+                            <svg
+                                class="sidebar-icon"
+                                viewBox="0 0 24 24"
+                                fill="currentColor"
+                            >
+                                <path
+                                    d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z"
+                                />
+                            </svg>
+                            <span class="glow-text">View Solutions</span>
+                        </button>
+                    {:else}
+                        <button
+                            class="sidebar-link"
+                            on:click={() => {
+                                let yesterdayPuzzle = generate(yesterday())
+                                    .join("")
+                                    .toUpperCase();
+                                let format = (s) => `${s[0]} - ${s[1]}`;
+                                solutions = solve(yesterdayPuzzle).map(format);
+                                allSolutions =
+                                    solveAll(yesterdayPuzzle).map(format);
+                                solutionsModal = true;
+                                showMenu = false;
+                            }}
+                        >
+                            <svg
+                                class="sidebar-icon"
+                                viewBox="0 0 24 24"
+                                fill="currentColor"
+                            >
+                                <path
+                                    d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z"
+                                />
+                            </svg>
+                            <span class="glow-text">View Solutions</span>
+                        </button>
+                    {/if}
+                </div>
+            </aside>
+        </div>
+    {/if}
 
     {#if help}
+        <!-- svelte-ignore a11y-click-events-have-key-events -->
         <div
             class="modal"
             bind:this={modal}
@@ -367,6 +777,9 @@
             }}
         >
             <div class="modal-content">
+                <button class="close-button" on:click={() => (help = false)}
+                    >&times;</button
+                >
                 <h3 style="margin-top: .5em">How to Play</h3>
                 <ul>
                     <li>Connect letters to spell words</li>
@@ -392,240 +805,221 @@
                         >.
                     </p>
                     <p>
-                        <a href="https://github.com/steeb-k/alphabox"
+                        <a href={githubUrl} target="_blank"
                             >Source code and trivia</a
                         >
                     </p>
                 </ul>
+                <h3>How "Par" is Calculated</h3>
+                <p>
+                    While there is always a two-word solution to the puzzle,
+                    some games may be more difficult to figure out than others.
+                    To that end, and to make the game more casual, a "par"
+                    system has been put in place to give a realistic expectation
+                    of how many guesses you should complete the puzzle in when
+                    playing casually.
+                </p>
+                <ul>
+                    <li>
+                        Each puzzle has at least one way to complete it with two
+                        words that only share one letter (the connecting
+                        letter.)
+                    </li>
+                    <li>
+                        Puzzles can still be completed with repeating letters -
+                        they just aren't the optimal solutions.
+                    </li>
+                    <li>
+                        If there is only one optimal solution and it is the only
+                        possible two-word solution, par is set at 6.
+                    </li>
+                    <li>
+                        If there is only one optimal solution and there are
+                        fewer than 4 possible two-word solutions, par is set to
+                        5.
+                    </li>
+                    <li>
+                        If there is only one optimal solution and there are 4 or
+                        more possible two-word solutions OR if there are 2
+                        possible optimal solutions, par is set to 4.
+                    </li>
+                    <li>
+                        If there are 3 or more optimal solutions, par is set to
+                        3.
+                    </li>
+                </ul>
             </div>
         </div>
     {/if}
-    <div class="current">
-        {#if message}
-            <span
-                style="position: absolute; left: 0; right: 0; font-size: medium;"
-                transition:fade
-                class="message">{message}</span
-            >
-        {/if}
-        {#if !done}
-            <span class="current-container">
-                <span class:shake={shakeAnimation}>{currentWord}</span>
-                <span class="caret">{caret}</span>
-            </span>
-        {:else}
-            <!-- keeps layout reserved -->
-            <span class="win-placeholder">YOU WIN!</span>
 
-            <!-- animated overlay -->
-            <span class="win-overlay" aria-hidden="true">
-                {#each "YOU WIN!".split("") as char, i}
-                    <span class="win-letter" style="--i:{i}">{char}</span>
-                {/each}
-            </span>
-        {/if}
-
-        <hr
-            style="min-width: 10em; max-width: 13em;
-            border:1px solid var(--svg-stroke-color); margin-top: 0"
-        />
-    </div>
-    <div class="words">
-        <p
-            style="width: fit-content; margin: auto"
-            on:click={() => {
-                navigator.clipboard.writeText(words), alert("copied");
+    {#if solutionsModal}
+        <!-- svelte-ignore a11y-click-events-have-key-events -->
+        <div
+            class="modal"
+            bind:this={modal}
+            on:click={(evt) => {
+                solutionsModal = evt.target != modal;
             }}
         >
-            {words}
-        </p>
-    </div>
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 42 42">
-        <rect
-            {x}
-            {y}
-            width={side}
-            height={side}
-            stroke="var(--svg-stroke-color)"
-            stroke-width={stroke}
-            fill="none"
-        />
-        {#each [...previousWords, currentWord] as word, pos}
-            {#each word as l, i}
-                {#if i + 1 < word.length}
-                    <line
-                        x1={circles[revindex(letters.indexOf(l))].x}
-                        y1={circles[revindex(letters.indexOf(l))].y}
-                        x2={circles[revindex(letters.indexOf(word[i + 1]))].x}
-                        y2={circles[revindex(letters.indexOf(word[i + 1]))].y}
-                        stroke={pos == previousWords.length
-                            ? "#ff3e00"
-                            : "#ff3e0080"}
-                        stroke-width={stroke}
-                        stroke-dasharray={pos == previousWords.length ? 2 : 0}
-                    />
-                {/if}
-            {/each}
-        {/each}
+            <div class="modal-content">
+                <button
+                    class="close-button"
+                    on:click={() => (solutionsModal = false)}>&times;</button
+                >
+                <h3>Solutions</h3>
+                <div class="solutions-container">
+                    <p>
+                        This list only contains solutions which do not repeat
+                        any letters except the connecting letter.
+                    </p>
+                    {#each solutions as sol}
+                        <p style="font-weight: bold">{sol}</p>
+                    {/each}
+                    {#each allSolutions as sol}
+                        {#if !solutions.includes(sol)}
+                            <p>{sol}</p>
+                        {/if}
+                    {/each}
+                </div>
+            </div>
+        </div>
+    {/if}
 
-        {#if !animatingWord && currentWord}
-            {#each currentWord as l, i}
-                {#if i + 1 < currentWord.length}
-                    <line
-                        x1={circles[revindex(letters.indexOf(l))].x}
-                        y1={circles[revindex(letters.indexOf(l))].y}
-                        x2={circles[
-                            revindex(letters.indexOf(currentWord[i + 1]))
-                        ].x}
-                        y2={circles[
-                            revindex(letters.indexOf(currentWord[i + 1]))
-                        ].y}
-                        stroke="#ff3e00"
-                        stroke-width={stroke}
-                        stroke-dasharray="2"
-                    />
-                {/if}
-            {/each}
-        {/if}
-        {#if animatingWord}
-            <path
-                d={getAnimatedPath(animatingWord)}
-                stroke="#ff3e00"
-                stroke-width={stroke}
-                fill="none"
-                stroke-dasharray={totalPathLength}
-                stroke-dashoffset={currentPathLength}
-            />
-        {/if}
-        {#each circles as c, i}
-            <circle
-                cx={c.x}
-                cy={c.y}
-                r="1"
-                fill={(lastLetter, currentWord, letterColor(index(i)))}
+    <div id="screenshot-area" style="width: auto;" bind:this={screenshotArea}>
+        <h1>alphabox</h1>
+
+        <p class="par">
+            Try to get it in <strong>{par}</strong> or fewer words!
+        </p>
+        <div class="current">
+            {#if done}
+                <div class="solved-words">
+                    {previousWords.join(" - ")}
+                </div>
+                <hr
+                    style="min-width: 10em; max-width: 13em;
+            border:1px solid var(--svg-stroke-color); margin-top: 0"
+                />
+            {:else}
+                <span class="current-container">
+                    <span
+                        class:shake={shakeAnimation}
+                        bind:this={currentEl}
+                        style="display: inline-block; 
+                 transform-origin: left center;
+                 white-space: nowrap;"
+                    >
+                        {currentText}
+                    </span>
+                    <span class="caret">{caret}</span>
+                </span>
+                <hr
+                    style="min-width: 10em; max-width: 13em;
+            border:1px solid var(--svg-stroke-color); margin-top: 0"
+                />
+            {/if}
+        </div>
+
+        <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 42 44"
+            style="margin-bottom: -1em; margin-top: -.25em;"
+        >
+            <rect
+                {x}
+                {y}
+                width={side}
+                height={side}
                 stroke="var(--svg-stroke-color)"
                 stroke-width={stroke}
-            />
-            <text
-                text-anchor="middle"
-                dominant-baseline="central"
-                x={letters_pos[i].x}
-                y={letters_pos[i].y}
-                font-size={letter_size}
-                fill="var(--text-color)"
-            >
-                {letters[index(i)]}
-            </text>
-            <rect
-                x={hitboxes[i].x}
-                y={hitboxes[i].y}
-                width={hitboxes[i].width}
-                height={hitboxes[i].height}
                 fill="none"
-                stroke="none"
-                stroke-width=".1"
-                pointer-events="fill"
-                on:click={() => selectLetter(index(i))}
             />
-        {/each}
-    </svg>
+            {#each [...previousWords, currentWord] as word, pos}
+                {#each word as l, i}
+                    {#if i + 1 < word.length}
+                        <line
+                            x1={circles[revindex(letters.indexOf(l))].x}
+                            y1={circles[revindex(letters.indexOf(l))].y}
+                            x2={circles[revindex(letters.indexOf(word[i + 1]))]
+                                .x}
+                            y2={circles[revindex(letters.indexOf(word[i + 1]))]
+                                .y}
+                            stroke={pos == previousWords.length
+                                ? "#ff3e00"
+                                : "#ff3e0080"}
+                            stroke-width={stroke}
+                            stroke-dasharray={pos == previousWords.length
+                                ? 2
+                                : 0}
+                        />
+                    {/if}
+                {/each}
+            {/each}
 
-    <div class="buttons">
-        <button on:click={deleteLetter}>Delete</button>
-        <button on:click={enterWord}>Submit</button>
+            {#if !animatingWord && currentWord}
+                {#each currentWord as l, i}
+                    {#if i + 1 < currentWord.length}
+                        <line
+                            x1={circles[revindex(letters.indexOf(l))].x}
+                            y1={circles[revindex(letters.indexOf(l))].y}
+                            x2={circles[
+                                revindex(letters.indexOf(currentWord[i + 1]))
+                            ].x}
+                            y2={circles[
+                                revindex(letters.indexOf(currentWord[i + 1]))
+                            ].y}
+                            stroke="#ff3e00"
+                            stroke-width={stroke}
+                            stroke-dasharray="2"
+                        />
+                    {/if}
+                {/each}
+            {/if}
+            {#if animatingWord}
+                <path
+                    d={getAnimatedPath(animatingWord)}
+                    stroke="#ff3e00"
+                    stroke-width={stroke}
+                    fill="none"
+                    stroke-dasharray={totalPathLength}
+                    stroke-dashoffset={currentPathLength}
+                />
+            {/if}
+            {#each circles as c, i}
+                <circle
+                    cx={c.x}
+                    cy={c.y}
+                    r="1"
+                    fill={letterColor(index(i), lastLetter, currentWord)}
+                    stroke="var(--svg-stroke-color)"
+                    stroke-width={stroke}
+                />
+                <text
+                    text-anchor="middle"
+                    dominant-baseline="central"
+                    x={letters_pos[i].x}
+                    y={letters_pos[i].y}
+                    font-size={letter_size}
+                    fill="var(--text-color)"
+                >
+                    {letters[index(i)]}
+                </text>
+                <!-- svelte-ignore a11y-click-events-have-key-events -->
+                <rect
+                    x={hitboxes[i].x}
+                    y={hitboxes[i].y}
+                    width={hitboxes[i].width}
+                    height={hitboxes[i].height}
+                    fill="none"
+                    stroke="none"
+                    stroke-width=".1"
+                    pointer-events="fill"
+                    on:click={() => selectLetter(index(i))}
+                />
+            {/each}
+        </svg>
     </div>
-
-    {#if !yesterdayLoaded}
-        <p
-            class="link"
-            on:click={() => {
-                loadYesterdayPuzzle();
-            }}
-        >
-            Yesterday's Game
-        </p>
-    {:else}
-        <p
-            class="link"
-            on:click={() => {
-                loadTodayPuzzle();
-            }}
-        >
-            Today's Game
-        </p>
-    {/if}
-
-    {#if !yesterdayLoaded}
-        <p class="link" on:click={loadTodaySolutions}>
-            {#if showTodaySolutions}
-                Hide Solutions
-            {:else}
-                View Solutions
-            {/if}
-        </p>
-    {/if}
-
-    {#if showTodaySolutions && !yesterdayLoaded}
-        <div class="solutions">
-            <p>Some solutions for today</p>
-            {#each solutions as sol}
-                <p style="font-weight: bold">{sol}</p>
-            {/each}
-            {#each allSolutions as sol}
-                {#if !solutions.includes(sol)}
-                    <p>{sol}</p>
-                {/if}
-            {/each}
-        </div>
-    {/if}
-
-    {#if yesterdayLoaded}
-        <p
-            class="link"
-            on:click={() => {
-                if (!displaySols) {
-                    let yesterdayPuzzle = generate(yesterday())
-                        .join("")
-                        .toUpperCase();
-                    let format = (s) => `${s[0]} - ${s[1]}`;
-                    solutions = solve(yesterdayPuzzle).map(format);
-                    allSolutions = solveAll(yesterdayPuzzle).map(format);
-                }
-                displaySols = !displaySols;
-            }}
-        >
-            {#if displaySols}
-                Hide Solutions
-            {:else}
-                View Solutions
-            {/if}
-        </p>
-    {/if}
-
-    {#if displaySols && yesterdayLoaded}
-        <div class="solutions">
-            <p>Some solutions for yesterday</p>
-            {#each solutions as sol}
-                <p style="font-weight: bold">{sol}</p>
-            {/each}
-            {#each allSolutions as sol}
-                {#if !solutions.includes(sol)}
-                    <p>{sol}</p>
-                {/if}
-            {/each}
-        </div>
-    {/if}
-    <br />
-    <p
-        class="link"
-        on:click={() => {
-            help = true;
-        }}
-    >
-        Help
-    </p>
-    <div class="link" on:click={loadRandomPuzzle}>Random Game</div>
-
+    <!-- svelte-ignore a11y-click-events-have-key-events -->
     <div
         class="github-banner"
         class:expanded={isExpanded}
@@ -652,325 +1046,38 @@
             </svg>
 
             <div class="text-content">
-                <span class="title">View on GitHub</span>
+                <!-- svelte-ignore a11y-missing-attribute -->
+                <a class="title">View on GitHub</a>
             </div>
         </div>
     </div>
+    {#if done}
+        <div class="screenshot-buttons">
+            <button on:click={takeScreenshot}>Share Results</button>
+        </div>
+        <div class="confetti-container">
+            {#each Array(150) as _, i}
+                <div
+                    class="confetti-piece"
+                    style="
+    --spread: {Math.random() * 100 - 50}vw;
+    --wobble: {Math.random() * 30 - 15}px; /* -15px to +15px wobble */
+    background: hsl({Math.random() * 360}, 100%, 50%);
+    animation-duration: 2.8s;
+    animation-delay: {Math.random() * 0.4}s;
+    border-radius: {i % 3 === 0 ? '50%' : '0'};
+  "
+                ></div>
+            {/each}
+        </div>
+    {:else}
+        <div class="buttons">
+            <button on:click={deleteLetter}>Delete</button>
+            <button on:click={enterWord}>Submit</button>
+        </div>
+    {/if}
 </main>
 
-<style global>
-    /* Important: Add this global style import to ensure global.css is bundled */
-    @import "./global.css";
+<style>
 
-    main {
-        text-align: center;
-        padding: 1em;
-        margin: 0 auto;
-    }
-
-    h1 {
-        color: #ff3c3c;
-        text-transform: uppercase;
-        font-family: 'Squaresville', sans-serif;
-        font-size: 7em;
-        font-weight: 900;
-        margin-top: 0;
-        margin-bottom: -0.2em;
-
-        /* Gradient from current color to transparent */
-        background: linear-gradient(to bottom, currentColor, transparent);
-        -webkit-background-clip: text;
-        background-clip: text;
-        -webkit-text-fill-color: transparent;
-    }
-
-
-    .par {
-        margin-bottom: 2em;
-    }
-
-    .unselectable {
-        -webkit-touch-callout: none;
-        -webkit-user-select: none;
-        -khtml-user-select: none;
-        -moz-user-select: none;
-        -ms-user-select: none;
-        user-select: none;
-    }
-    .current {
-        font-size: x-large;
-        position: static;
-    }
-
-    .words {
-        height: 1em;
-        font-size: large;
-    }
-    .buttons > button {
-        width: 100px;
-        text-align: center;
-    }
-
-    svg {
-        width: 100%;
-        max-width: 400px;
-        margin-top: 1em;
-        margin-bottom: 1em;
-    }
-
-    .message {
-        margin-top: -1.4em;
-    }
-
-    .blink {
-        animation: blinker 1s infinite;
-    }
-
-    .link {
-        display: inline;
-        margin: 0.5em;
-        color: var(--link-color);
-        cursor: pointer;
-    }
-
-    .link:hover {
-        text-decoration: underline;
-    }
-
-    .modal {
-        position: fixed;
-        z-index: 1;
-        left: 0;
-        top: 0;
-        width: 100%;
-        height: 100%;
-        overflow: auto;
-        background-color: rgba(0, 0, 0, 0.4);
-    }
-
-    .modal-content {
-        background-color: var(--modal-bg-color);
-        margin: 6em auto;
-        padding: 10px;
-        border: 1px solid var(--border-color);
-        border-radius: 10px;
-        max-width: 400px;
-    }
-    .modal-content > ul {
-        text-align: left;
-    }
-    .line-animation {
-        transition: stroke-dashoffset 0.75s linear;
-    }
-
-    @keyframes blinker {
-        50% {
-            opacity: 0;
-        }
-    }
-
-    @media (max-width: 350px) {
-        h1 {
-            font-size: 2.5em;
-        }
-        .modal-content {
-            margin: 5.5em auto;
-        }
-        .message {
-            margin-top: -1.2em;
-        }
-    }
-
-    .current {
-        position: relative;
-        font-size: x-large;
-        line-height: 1; /* baseline alignment */
-        height: auto; /* let the line height handle spacing */
-    }
-
-    /* Placeholder occupies horizontal space only, zero height effect */
-    .win-placeholder {
-        visibility: hidden;
-        display: inline-block;
-        width: 100%; /* optional, match word width */
-        height: 0; /* no extra vertical space */
-    }
-
-    /* Overlay: absolutely positioned horizontally, baseline-aligned vertically */
-    .win-overlay {
-        position: absolute;
-        left: 50%; /* center horizontally */
-        bottom: 0; /* align baseline with parent's text line */
-        transform: translateX(-50%); /* horizontal centering */
-        display: flex;
-        align-items: baseline; /* keep letters on same line */
-        gap: 0.05em; /* small space between letters */
-        pointer-events: none;
-        font-size: 2em;
-        z-index: 10;
-    }
-
-    /* Letters bounce vertically only */
-    .win-letter {
-        display: inline-block;
-        font-weight: 900;
-        background: linear-gradient(
-            90deg,
-            #ff3e00,
-            #ff0080,
-            #ffeb00,
-            #00ff99,
-            #00c3ff,
-            #7d00ff
-        );
-        -webkit-background-clip: text;
-        background-clip: text;
-        -webkit-text-fill-color: transparent;
-
-        /* Restore outline */
-        -webkit-text-stroke: 2px var(--text-color);
-        text-stroke: 2px var(--text-color); /* fallback for future */
-
-        animation: win-bounce 0.7s ease infinite;
-        animation-delay: calc(var(--i) * 0.07s);
-        will-change: transform;
-    }
-
-    /* Bounce: vertical movement only */
-    @keyframes win-bounce {
-        0% {
-            transform: translateY(0);
-        }
-        40% {
-            transform: translateY(-8px);
-        }
-        70% {
-            transform: translateY(2px);
-        }
-        100% {
-            transform: translateY(0);
-        }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-        .win-letter {
-            animation: none;
-        }
-    }
-
-    @keyframes shake-red {
-        0% {
-            transform: translateX(0);
-            color: var(--text-color);
-        }
-        25% {
-            transform: translateX(-4px);
-            color: red;
-        }
-        50% {
-            transform: translateX(4px);
-            color: red;
-        }
-        75% {
-            transform: translateX(-4px);
-            color: red;
-        }
-        100% {
-            transform: translateX(0);
-            color: var(--text-color);
-        }
-    }
-
-    .shake {
-        display: inline; /* ensure no extra box */
-        animation: shake-red 0.2s ease;
-    }
-    .current-container {
-        position: relative;
-        display: inline-block; /* keeps width to the word */
-    }
-
-    .current-container > .caret {
-        position: absolute;
-        left: 100%; /* start right after the word span */
-        margin-left: 0.1em; /* small gap between last letter and caret */
-        top: 50%;
-        transform: translateY(-50%);
-        font-size: inherit;
-        line-height: 1;
-    }
-
-    .current-container > span {
-        display: inline-block;
-        line-height: 1; /* matches caret positioning */
-    }
-
-    .github-banner {
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        background: var(--button-bg-color);
-        color: var(--text-color);
-        border: 2px solid var(--button-text-color);
-        border-radius: 30px;
-        padding: 10px 20px;
-        cursor: pointer;
-        box-shadow: 0px 0px 12px var(--text-color);
-        transition: all 0.3s ease;
-        z-index: 1000;
-        display: flex;
-        align-items: center;
-        justify-content: center; /* Center content */
-        overflow: hidden;
-        width: auto;
-        max-width: 200px;
-        height: 40px;
-        box-sizing: border-box; /* This is the key fix! */
-    }
-
-    .github-banner:not(.expanded) {
-        max-width: 40px;
-        padding: 10px; /* Equal padding all around */
-    }
-
-    .banner-content {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-    }
-
-    /* Add this rule to fix the collapsed state */
-    .github-banner:not(.expanded) .banner-content {
-        gap: 0; /* Remove gap when collapsed */
-        justify-content: center; /* Center the icon */
-    }
-
-    .github-icon {
-        width: 24px;
-        height: 24px;
-        fill: var(--text-color);
-        flex-shrink: 0;
-    }
-
-    .text-content {
-        white-space: nowrap;
-        overflow: hidden;
-        transition: opacity 0.2s ease;
-        font-weight: 600;
-        font-size: 14px;
-    }
-
-    .github-banner:not(.expanded) .text-content {
-        opacity: 0;
-        width: 0;
-        margin: 0; /* Remove margin when collapsed */
-    }
-
-    @font-face {
-    font-family: 'Squaresville';
-    src: url('./SQUARESV.TTF') format('truetype');
-    font-weight: normal;
-    font-style: normal;
-    font-display: swap; /* Optional: improves performance */
-}
 </style>
