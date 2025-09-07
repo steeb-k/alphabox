@@ -12,7 +12,7 @@
         makeCheck,
         makeSolve,
     } from "./litterboxed.js";
-    import './global.css';
+    import "./global.css";
 
     // ===== VARIABLE DECLARATIONS =====
     // Game state variables
@@ -28,7 +28,7 @@
     let par = 0;
     let yesterdayLoaded = false;
     let showTodaySolutions = false;
-    
+
     // UI state variables
     let help = false;
     let solutionsModal = false;
@@ -38,7 +38,7 @@
     let isHovering = false;
     let isVisible = true;
     let isSidebarHovered = false;
-    
+
     // Puzzle configuration
     let minlength = 3;
     let side = 30;
@@ -49,22 +49,22 @@
     let letter_size = 4;
     let letters = localStorage.getItem("puzzle") || "            ";
     let url = "steeb-k.github.io/alphabox";
-    
+
     // Animation variables
     let animatingWord = null;
     let animationDuration = 800;
     let animationInterval;
     let totalPathLength = 0;
     let currentPathLength = 0;
-    
+
     // DOM references
     let screenshotArea;
     let currentEl;
     let scaleFactor = 1;
-    
+
     // Game functions (will be assigned)
     let generate, check, solve, solveAll;
-    
+
     // Constants and derived data
     const githubUrl = "https://github.com/steeb-k/alphabox";
     let caret = "|";
@@ -72,28 +72,30 @@
     let letters_pos = [];
     let hitboxes = [];
     let sidebarTimeout;
-    
+
     // ===== COMPUTED PROPERTIES =====
     $: lastLetter = currentWord ? letters.indexOf(currentWord.slice(-1)) : -1;
     $: done = [...Array(12).keys()].every(
         (i) => previousWords.join("").indexOf(letters[i]) > -1,
     );
     $: words = previousWords.join(" - ");
-    $: currentText = [...previousWords, currentWord].filter(Boolean).join(" - ");
-    
+    $: currentText = [...previousWords, currentWord]
+        .filter(Boolean)
+        .join(" - ");
+
     $: if (currentEl && currentText) {
         requestAnimationFrame(() => {
             requestAnimationFrame(() => {
                 const parent = currentEl.parentElement;
                 const parentWidth = parent.offsetWidth;
                 const contentWidth = currentEl.scrollWidth;
-                
+
                 if (contentWidth > parentWidth) {
                     scaleFactor = Math.max(0.3, parentWidth / contentWidth);
                     currentEl.style.transform = `scale(${scaleFactor})`;
                 } else {
                     scaleFactor = 1;
-                    currentEl.style.transform = 'scale(1)';
+                    currentEl.style.transform = "scale(1)";
                 }
             });
         });
@@ -103,14 +105,14 @@
     onMount(async () => {
         let savedDate = localStorage.getItem("date") ?? getDate();
         await loadPuzzle(savedDate);
-        
+
         // Close banner after delay
         const timer = setTimeout(() => {
             if (!isHovering) {
                 isExpanded = false;
             }
         }, 3000);
-        
+
         return () => clearTimeout(timer);
     });
 
@@ -282,7 +284,8 @@
     let letterColor = (i) => {
         if (i == lastLetter) return "#ff3e00";
 
-        const usedInPreviousWords = previousWords.join("").indexOf(letters[i]) > -1;
+        const usedInPreviousWords =
+            previousWords.join("").indexOf(letters[i]) > -1;
         const usedInCurrentWord = currentWord.indexOf(letters[i]) > -1;
 
         if (usedInPreviousWords && !usedInCurrentWord) return "var(--bg-color)";
@@ -380,14 +383,16 @@
             const canvas = await html2canvas(screenshotArea, {
                 scrollY: -window.scrollY,
                 onclone: (clonedDocument) => {
-                    const screenshotContainer = clonedDocument.getElementById("screenshot-area");
+                    const screenshotContainer =
+                        clonedDocument.getElementById("screenshot-area");
                     if (screenshotContainer) {
                         screenshotContainer.style.paddingBottom = "2em";
                         screenshotContainer.style.backgroundColor = "#121212";
                     }
 
                     clonedDocument.body.style.backgroundColor = "#121212";
-                    clonedDocument.documentElement.style.backgroundColor = "#121212";
+                    clonedDocument.documentElement.style.backgroundColor =
+                        "#121212";
                     clonedDocument.body.style.color = "white";
                     clonedDocument.body.style.webkitTextFillColor = "white";
 
@@ -435,12 +440,14 @@
                     allTextElements.forEach((el) => {
                         if (el !== h1Element) {
                             el.style.color = "var(--text-color";
-                            el.style.webkitTextFillColor = "var(--background-color)";
+                            el.style.webkitTextFillColor =
+                                "var(--background-color)";
                             el.style.backgroundImage = "none";
                         }
                     });
 
-                    const lines = clonedDocument.querySelectorAll(".menu-icon .line");
+                    const lines =
+                        clonedDocument.querySelectorAll(".menu-icon .line");
                     lines.forEach((line) => {
                         line.style.backgroundColor = "white";
                     });
@@ -449,7 +456,7 @@
                     if (hr) {
                         hr.style.borderColor = "white";
                     }
-                    
+
                     const urlElement = clonedDocument.createElement("div");
                     urlElement.textContent = url;
                     urlElement.style.position = "absolute";
@@ -470,7 +477,8 @@
                     urlElement.style.margin = "-10px auto";
                     urlElement.style.width = "fit-content";
                     urlElement.style.maxWidth = "90%";
-                    urlElement.style.border = "1px solid rgba(255, 255, 255, 0.2)";
+                    urlElement.style.border =
+                        "1px solid rgba(255, 255, 255, 0.2)";
 
                     if (screenshotContainer) {
                         screenshotContainer.style.position = "relative";
@@ -482,7 +490,9 @@
             const isMobile = /Mobi|Android/i.test(navigator.userAgent);
 
             if (isMobile) {
-                const blob = await new Promise((resolve) => canvas.toBlob(resolve));
+                const blob = await new Promise((resolve) =>
+                    canvas.toBlob(resolve),
+                );
                 const url = URL.createObjectURL(blob);
                 const newTab = window.open(url, "_blank");
                 if (newTab) {
@@ -490,17 +500,23 @@
                         showCustomAlert("Long-press the image to save it!");
                     };
                 } else {
-                    showCustomAlert("Pop-up blocker may have prevented the screenshot from opening.");
+                    showCustomAlert(
+                        "Pop-up blocker may have prevented the screenshot from opening.",
+                    );
                 }
             } else {
-                const blob = await new Promise((resolve) => canvas.toBlob(resolve));
+                const blob = await new Promise((resolve) =>
+                    canvas.toBlob(resolve),
+                );
                 try {
                     const item = new ClipboardItem({ "image/png": blob });
                     await navigator.clipboard.write([item]);
                     showCustomAlert("Screenshot copied to clipboard!");
                 } catch (err) {
                     console.warn("Clipboard write failed:", err);
-                    showCustomAlert("Failed to copy to clipboard. Downloading instead.");
+                    showCustomAlert(
+                        "Failed to copy to clipboard. Downloading instead.",
+                    );
                 }
 
                 const today = new Date();
@@ -1079,5 +1095,4 @@
 </main>
 
 <style>
-
 </style>
