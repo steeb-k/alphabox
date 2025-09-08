@@ -4,12 +4,13 @@ Open-source implementation of [Letter Boxed](https://www.nytimes.com/puzzles/let
 
 Now that the original game has been placed behind a paywall, I created this fork of [Litter Boxed](https://github.com/louisabraham/litterboxed) and have started adding new features, including..
 
- - Dark mode support
+ - Dark mode support (and theming override)
  - Improved puzzle solving validation
  - Random game generator for infinite play
  - View solutions for any generated puzzle
  - Smooth animations
  - A "par" system similar to what you have in the original game
+ - Streak tracking
 
  ![Screenshot](screenshot.png?raw=true)
 
