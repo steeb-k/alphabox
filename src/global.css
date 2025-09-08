@@ -359,7 +359,7 @@ svg {
     width: 400px;
     position: relative;
     box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
-    max-height: 90vh; /* Maximum height */
+    max-height: 80vh; /* Maximum height */
     overflow-y: auto; /* Enable vertical scrolling */
     display: flex;
     flex-direction: column;
@@ -387,7 +387,7 @@ svg {
 
 .close-button {
     position: absolute;
-    top: 0.5rem;
+    top: 1rem;
     right: 1rem;
     background: none;
     border: none;
@@ -635,7 +635,7 @@ svg {
     background: transparent;
     border: none;
     cursor: pointer;
-    z-index: 1001;
+    z-index: 999;
     width: auto;
     height: 40px;
     display: flex;
