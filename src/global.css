@@ -408,7 +408,7 @@ svg {
 /* Modal content styling */
 .modal-content h3 {
     margin-top: 0;
-    margin-bottom: 1.5rem;
+    margin-bottom: 0;
     text-align: center;
 }
 
@@ -441,7 +441,6 @@ svg {
     background: rgba(0, 0, 0, 0.3);
 }
 
-/* For Firefox */
 .modal-content {
     scrollbar-width: thin;
     scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
@@ -450,7 +449,7 @@ svg {
 /* ===== STREAK MODAL SPECIFIC STYLES ===== */
 .streak-container {
     text-align: center;
-    margin: 1em 0;
+    margin: .25em 0;
 }
 
 .streak-container p {
