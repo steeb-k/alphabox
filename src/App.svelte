@@ -285,6 +285,15 @@
         }, 10);
     }
 
+    let clearWords = () => {
+        previousWords = [];
+        currentWord = "";
+        animatingWord = null;
+        totalPathLength = 0;
+        currentPathLength = 0;
+        if (animationInterval) cancelAnimationFrame(animationInterval);
+    };
+
     // ===== ANIMATION FUNCTIONS =====
     const getAnimatedPath = (word) => {
         if (!word || word.length < 2) return "";
@@ -1367,8 +1376,9 @@
         </div>
     {:else}
         <div class="buttons">
+            <button on:click={clearWords}>Clear</button>
             <button on:click={deleteLetter}>Delete</button>
-            <button on:click={enterWord}>Submit</button>
+            <button on:click={enterWord}>Enter</button>
         </div>
     {/if}
 </main>

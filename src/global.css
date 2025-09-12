@@ -275,8 +275,10 @@ svg {
 }
 
 .buttons > button {
-    width: 100px;
-    border-radius: 5px;
+    margin-top: 15px;
+    margin-bottom: 15px;
+    width: 5em;
+    border-radius: 15px;
 }
 
 .screenshot-buttons > button {
