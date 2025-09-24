@@ -57,6 +57,7 @@
     let streakData = null;
     let showStreakModal = false;
     let showHelpOnLoad = false;
+    let streakNotice = "";
 
     // Animation variables
     let animatingWord = null;
@@ -118,6 +119,20 @@
         // Check streak data after loading puzzle
         streakData = getStreakData();
         showHelpOnLoad = shouldShowHelp();
+
+        // Compute a short notice about whether the user broke their streak
+        if (streakData) {
+            const last = streakData.lastPlayed;
+            if (last === getDate()) {
+                streakNotice = "You already played today.";
+            } else if (last === yesterday()) {
+                streakNotice = "Nice — you played yesterday, your streak is intact.";
+            } else if (!last) {
+                streakNotice = "";
+            } else {
+                streakNotice = "You missed yesterday — your previous streak was broken.";
+            }
+        }
 
         // Show appropriate modal
         if (showHelpOnLoad) {
@@ -323,6 +338,18 @@
 
             // Update the UI
             streakData = updatedStreak;
+
+                // Recompute streak notice for the modal
+                const last = streakData.lastPlayed;
+                if (last === getDate()) {
+                    streakNotice = "You already played today.";
+                } else if (last === yesterday()) {
+                    streakNotice = "Nice — you played yesterday, your streak is intact.";
+                } else if (!last) {
+                    streakNotice = "";
+                } else {
+                    streakNotice = "You missed yesterday — your previous streak was broken.";
+                }
 
             // Show streak modal AFTER the UI has updated
             setTimeout(() => {
@@ -804,6 +831,9 @@
                             >
                             <span class="streak-label">day streak! 🔥</span>
                         </div>
+                        {#if streakNotice}
+                            <p class="streak-notice">{streakNotice}</p>
+                        {/if}
                         <p>
                             Your longest streak: <strong
                                 >{streakData.longest} days</strong
